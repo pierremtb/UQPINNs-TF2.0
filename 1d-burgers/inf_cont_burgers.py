@@ -1,0 +1,97 @@
+#%% IMPORTING/SETTING UP PATHS
+
+import sys
+import json
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+import tensorflow as tf
+import numpy as np
+import tensorflow_probability as tfp
+
+# Manually making sure the numpy random seeds are "the same" on all devices
+np.random.seed(1234)
+tf.random.set_seed(1234)
+
+#%% LOCAL IMPORTS
+
+eqnPath = "1d-burgers"
+sys.path.append(eqnPath)
+sys.path.append("utils")
+from custom_lbfgs import lbfgs, Struct
+from burgersutil import prep_data, plot_inf_cont_results
+from advneuralnetwork import AdvNeuralNetwork
+from logger import Logger
+
+#%% HYPER PARAMETERS
+
+if len(sys.argv) > 1:
+    with open(sys.argv[1]) as hpFile:
+        hp = json.load(hpFile)
+else:
+    hp = {}
+    # Data size on the initial condition solution
+    hp["N_i"] = 50
+    # Collocation points on the boundaries
+    hp["N_b"] = 100
+    # Collocation points on the domain
+    hp["N_f"] = 10000
+    # Dimension of input, output and latent variable
+    hp["X_dim"] = 1 
+    hp["Y_dim"] = 1
+    hp["T_dim"] = 1
+    hp["Z_dim"] = 1
+    # DeepNN topology (2-sized input [x t], 4 hidden layer of 100-width, 2-sized output [u, v])
+    hp["layers_P"] = [hp["X_dim"]+hp["T_dim"]+hp["Z_dim"], 100, 100, 100, 100, hp["Y_dim"]]
+    hp["layers_Q"] = [hp["X_dim"]+hp["T_dim"]+hp["Y_dim"], 100, 100, 100, 100, hp["Z_dim"]]
+    hp["layers_T"] = [hp["X_dim"]+hp["T_dim"]+hp["Y_dim"], 100, 100, 100, 100, 1]
+    # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
+    hp["tf_epochs"] = 500
+    hp["tf_lr"] = 0.06
+    hp["tf_b1"] = 0.99
+    hp["tf_eps"] = 1e-1 
+    # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
+    hp["nt_epochs"] = 500
+    hp["nt_lr"] = 1.0
+    hp["nt_ncorr"] = 50
+    # Loss coefficients
+    hp["lambda"] = 1.5
+    hp["beta"] = 1.0
+    # MinMax switching
+    hp["k1"] = 1
+    hp["k2"] = 5
+
+#%% DEFINING THE MODEL
+
+class BurgersInformedNN(AdvNeuralNetwork):
+    def __init__(self, hp, logger, X_f, ub, lb):
+        super().__init__(hp, logger, ub, lb)
+        
+        # Separating the collocation coordinates
+        self.x_f = tf.convert_to_tensor(X_f[:, 0:1], dtype=self.dtype)
+        self.t_f = tf.convert_to_tensor(X_f[:, 1:2], dtype=self.dtype)
+
+#%% TRAINING THE MODEL
+
+# Getting the data
+path = os.path.join(eqnPath, "data", "burgers_shock.mat")
+x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f, ub, lb = prep_data(path, hp["N_i"], hp["N_b"], hp["N_f"], noise=0.0)
+
+# Creating the model
+logger = Logger(frequency=10, hp=hp)
+pinn = BurgersInformedNN(hp, logger, X_f, ub, lb)
+
+# Defining the error function for the logger
+def error():
+  u_pred = pinn.predict(X_star)
+  return np.linalg.norm(u_star - u_pred, 2) / np.linalg.norm(u_star, 2)
+logger.set_error_fn(error)
+
+# Training the PINN
+pinn.fit(X_u_train, u_train)
+
+# Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
+u_pred = pinn.predict(X_star)
+
+#%% PLOTTING
+plot_inf_cont_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, t,
+  save_path=eqnPath, save_hp=hp) 
