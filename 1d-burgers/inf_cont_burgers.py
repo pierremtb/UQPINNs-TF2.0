@@ -46,19 +46,22 @@ else:
     hp["layers_T"] = [hp["X_dim"]+hp["T_dim"]+hp["Y_dim"], 100, 100, 100, 100, 1]
     # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
     hp["tf_epochs"] = 500
-    hp["tf_lr"] = 0.06
-    hp["tf_b1"] = 0.99
-    hp["tf_eps"] = 1e-1 
+    hp["tf_lr"] = 0.0001
+    hp["tf_b1"] = 0.9
+    hp["tf_eps"] = None 
     # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
-    hp["nt_epochs"] = 500
-    hp["nt_lr"] = 1.0
-    hp["nt_ncorr"] = 50
+    # hp["nt_epochs"] = 500
+    # hp["nt_lr"] = 1.0
+    # hp["nt_ncorr"] = 50
     # Loss coefficients
     hp["lambda"] = 1.5
     hp["beta"] = 1.0
     # MinMax switching
     hp["k1"] = 1
     hp["k2"] = 5
+    # Batch size
+    hp["batch_size_u"] = hp["N_i"] + hp["N_b"]
+    hp["batch_size_f"] = hp["N_f"]
 
 #%% DEFINING THE MODEL
 
@@ -66,9 +69,102 @@ class BurgersInformedNN(AdvNeuralNetwork):
     def __init__(self, hp, logger, X_f, ub, lb):
         super().__init__(hp, logger, ub, lb)
         
-        # Separating the collocation coordinates
-        self.x_f = tf.convert_to_tensor(X_f[:, 0:1], dtype=self.dtype)
-        self.t_f = tf.convert_to_tensor(X_f[:, 1:2], dtype=self.dtype)
+        # Separating the collocation coordinates and normalizing
+        x_f = X_f[:, 0:1]
+        t_f = X_f[:, 1:2]
+        self.x_mean = x_f.mean(0)
+        self.x_std = x_f.std(0)
+        self.t_mean = t_f.mean(0)
+        self.t_std = t_f.std(0)
+        self.x_f = tf.convert_to_tensor(
+          (x_f - self.x_mean) / self.x_std,
+          dtype=self.dtype)
+        self.t_f = tf.convert_to_tensor(
+          (x_f - self.x_mean) / self.x_std,
+          dtype=self.dtype)
+
+        self.Jacobian_X = 1 / self.x_std
+        self.Jacobian_T = 1 / self.t_std
+
+    def normalize_x(self, x):
+        return (x - self.x_mean) / self.x_std
+
+    def normalize_t(self, t):
+        return (t - self.t_mean) / self.t_std
+
+    def normalize(self, X):
+        x = self.normalize_x(X[:, 0:1])
+        t = self.normalize_t(X[:, 1:2])
+        return np.concatenate((x, t), axis=1)
+
+    def f(self, X): 
+        return tf.zeros_like(X)
+
+    def model_r(self, XZ_f):
+        x_f = XZ_f[:, 0:1]
+        t_f = XZ_f[:, 1:2]
+        z_prior = XZ_f[:, 2:3]
+        with tf.GradientTape(persistent=True) as tape:
+            tape.watch(x_f)
+            tape.watch(t_f)
+            X = tf.concat([x_f, t_f], axis=1)
+            u = self.model_p(tf.concat([X, z_prior], axis=1))
+            u_x = tape.gradient(u, x_f)
+        u_t = tape.gradient(u, t_f)
+        u_xx = ttapef.gradient(u_x, x_f)
+        del tape
+        f = self.f(X)
+        r = (self.Jacobian_T) * u_t + (self.Jacobian_X) * u * u_x - (0.01/np.pi) * (self.Jacobian_X ** 2) * u_xx - f
+        return r
+    
+  # Fetches a mini-batch of data
+    def fetch_minibatch(self, X_u, u, X_f):
+        N_u = X_u.shape[0]
+        N_f = X_f.shape[0]
+        idx_u = np.random.choice(N_u, self.batch_size_u, replace=False)
+        idx_f = np.random.choice(N_f, self.batch_size_f, replace=False)
+        X_u_batch = tf.convert_to_tensor(X_u[idx_u,:], dtype=self.dtype)
+        X_f_batch = tf.convert_to_tensor(X_f[idx_f,:], dtype=self.dtype)
+        u_batch = tf.convert_to_tensor(u[idx_u,:], dtype=self.dtype)
+        return X_u_batch, X_f_batch, u_batch
+
+    # The training function
+    def fit(self, X_u, u):
+        self.logger.log_train_start(self)
+
+        # Creating the tensors
+        X_u = self.normalize(X_u)
+        X_f = tf.concat([self.x_f, self.t_f], axis=1).numpy()
+
+        self.logger.log_train_opt("Adam")
+        for epoch in range(self.epochs):
+            X_u_batch, u_batch, X_f_batch = self.fetch_minibatch(X_u, u, X_f)
+            
+            Z_u = np.random.randn(self.batch_size_u, 1)
+            Z_f = np.random.randn(self.batch_size_f, 1)
+
+            # Dual-Optimization step
+            for _ in range(self.k1):
+                loss_T, grads = \
+                    self.generator_grad(X_u_batch, u_batch, X_f_batch, Z_u, Z_f)
+                self.optimizer_T.apply_gradients(
+                    zip(grads, self.wrap_training_variables()))
+            for _ in range(self.k2):
+                loss_G, loss_KL, loss_recon, loss_PDE, grads = \
+                    self.discriminator_grad(X_u_batch, u_batch, Z_u)
+                self.optimizer_KL.apply_gradients(
+                    zip(grads, self.wrap_training_variables()))
+
+            loss_str = f"KL_loss: {loss_KL:.2e}, Recon_loss: {loss_recon:.2e}, PDE_loss: {loss_PDE:.2e}, T_loss: {loss_T:.2e}" 
+            self.logger.log_train_epoch(epoch, 0.0, custom=loss_str)
+        
+        self.logger.log_train_end(self.epochs)
+
+    def predict(self, X_star):
+        u_pred = self.model_p(X_star)
+        return u_pred.numpy()
+
+
 
 #%% TRAINING THE MODEL
 

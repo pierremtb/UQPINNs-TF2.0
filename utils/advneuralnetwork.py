@@ -9,151 +9,122 @@ import tensorflow_probability as tfp
 from custom_lbfgs import lbfgs, Struct
 
 class AdvNeuralNetwork(object):
-  def __init__(self, hp, logger, ub, lb):
-    
-    # Setting up the optimizers with the previously defined hyper-parameters
-    # self.nt_config = Struct()
-    # self.nt_config.learningRate = hp["nt_lr"]
-    # self.nt_config.maxIter = hp["nt_epochs"]
-    # self.nt_config.nCorrection = hp["nt_ncorr"]
-    # self.nt_config.tolFun = 1.0 * np.finfo(float).eps
-    self.epochs = hp["tf_epochs"]
-    self.optimizer_KL = tf.keras.optimizers.Adam(
-      learning_rate=hp["tf_lr"],
-      beta_1=hp["tf_b1"],
-      epsilon=hp["tf_eps"])
-    self.optimizer_T = tf.keras.optimizers.Adam(
-      learning_rate=hp["tf_lr"],
-      beta_1=hp["tf_b1"],
-      epsilon=hp["tf_eps"])
+    def __init__(self, hp, logger, ub, lb):
 
-    # Descriptive Keras models
-    self.model_p = self.declare_model(hp["layers_P"])
-    self.model_q = self.declare_model(hp["layers_Q"])
-    self.model_t = self.declare_model(hp["layers_T"])
+        # Setting up the optimizers with the previously defined hp
+        self.epochs = hp["tf_epochs"]
+        self.optimizer_KL = tf.keras.optimizers.Adam(
+            learning_rate=hp["tf_lr"],
+            beta_1=hp["tf_b1"],
+            epsilon=hp["tf_eps"])
+        self.optimizer_T = tf.keras.optimizers.Adam(
+            learning_rate=hp["tf_lr"],
+            beta_1=hp["tf_b1"],
+            epsilon=hp["tf_eps"])
 
-    # Hp
-    self.X_dim = hp["X_dim"]
-    self.T_dim = hp["T_dim"]
-    self.Y_dim = hp["Y_dim"]
-    self.Z_dim = hp["Z_dim"]
-    self.lamda = hp["lamda"]
-    self.beta = hp["beta"]
-    self.k1 = hp["k1"]
-    self.k2 = hp["k2"]
+        # Descriptive Keras models
+        self.model_p = self.declare_model(hp["layers_P"])
+        self.model_q = self.declare_model(hp["layers_Q"])
+        self.model_t = self.declare_model(hp["layers_T"])
 
-    # self.setup_weights_tracking()
+        # Hp
+        self.X_dim = hp["X_dim"]
+        self.T_dim = hp["T_dim"]
+        self.Y_dim = hp["Y_dim"]
+        self.Z_dim = hp["Z_dim"]
+        self.kl_lambda = hp["lambda"]
+        self.kl_beta = hp["beta"]
+        self.k1 = hp["k1"]
+        self.k2 = hp["k2"]
+        self.batch_size_u = hp["batch_size_u"]
+        self.batch_size_f = hp["batch_size_f"]
 
-    self.logger = logger
-    self.dtype = tf.float32
+        self.logger = logger
+        self.dtype = tf.float32
 
-  def declare_model(self, layers):
-    model = tf.keras.Sequential()
-    model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
-    for width in layers[1:]:
-       model.add(tf.keras.layers.Dense(
-          width, activation=tf.nn.tanh,
-          kernel_initializer="glorot_normal"))
-    return model
+    def declare_model(self, layers):
+        model = tf.keras.Sequential()
+        model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
+        for width in layers[1:]:
+            model.add(tf.keras.layers.Dense(
+                width, activation=tf.nn.tanh,
+                kernel_initializer="glorot_normal"))
+        return model
 
-  def setup_weights_tracking(self, layers):
-    # Computing the sizes of weights/biases for future decomposition
-    self.sizes_w = []
-    self.sizes_b = []
-    for i, width in enumerate(layers):
-      if i != 1:
-        self.sizes_w.append(int(width * layers[1]))
-        self.sizes_b.append(int(width if i != 0 else layers[1]))
-    
-  # Defining custom loss
-  def loss(self, u, u_pred):
-    return tf.reduce_mean(tf.square(u - u_pred))
+    # Mininizing the KL
+    def generator_loss(self, X_u, u, u_pred, X_f, f_pred, Z_u, Z_f):
+        # Prior:
+        z_u_prior = Z_u
+        z_f_prior = Z_f
+        # Encoder: q(z|x,y)
+        z_u_encoder = self.model_q(tf.concat([X_u, u_pred], axis=1))
+        z_f_encoder = self.model_q(tf.concat([X_f, f_pred], axis=1))
+        
+        # Discriminator loss
+        Y_pred = self.model_p(tf.concat([X_u, Z_u], axis=1))
+        T_pred = self.model_t(tf.concat([X_u, u_pred], axis=1))
+        
+        # KL-divergence between the data distribution and the model distribution
+        KL = tf.reduce_mean(T_pred)
 
-  def grad(self, X, u):
-    with tf.GradientTape() as tape:
-      loss_value = self.loss(u, self.model_p(X))
-    return loss_value, tape.gradient(loss_value, self.wrap_training_variables())
+        # Entropic regularization
+        log_q = - tf.reduce_mean(tf.square(z_u_prior - z_u_encoder))
+        
+        # Physics-informed loss
+        loss_f = tf.reduce_mean(tf.square(f_pred))
 
-  def wrap_training_variables(self):
-    var = self.model_p.trainable_variables
-    return var
+        # Generator loss
+        loss = KL + (1.0 - self.kl_lambda)*log_q + self.kl_beta * loss_f
+        
+        return loss, KL, (1.0 - self.kl_lambda)*log_q, self.kl_beta * loss_f
 
-  def get_params(self, numpy=False):
-    return []
+    def discriminator_loss(self, X_u, u, Z_u):
+        # Prior: p(z)
+        z_prior = Z_u
+        # Decoder: p(y|x,z)
+        u_pred = self.model_p(tf.concat([X_u, z_prior], axis=1))                
+        
+        # Discriminator loss
+        T_real = self.model_t(tf.concat([X_u, u], axis=1))
+        T_fake = self.model_t(tf.concat([X_u, u_pred], axis=1))
+        
+        T_real = tf.sigmoid(T_real)
+        T_fake = tf.sigmoid(T_fake)
+        
+        T_loss = -tf.reduce_mean(tf.math.log(1.0 - T_real + 1e-8) + \
+                                 tf.math.log(T_fake + 1e-8)) 
+        
+        return T_loss
 
-  def get_weights(self, convert_to_tensor=True):
-    w = []
-    for layer in self.model_p.layers[1:]:
-      weights_biases = layer.get_weights()
-      weights = weights_biases[0].flatten()
-      biases = weights_biases[1]
-      w.extend(weights)
-      w.extend(biases)
-    if convert_to_tensor:
-      w = tf.convert_to_tensor(w, dtype=self.dtype)
-    return w
+    def generator_grad(self, X_u, u, X_f, Z_u, Z_f):
+        with tf.GradientTape(persistent=True) as tape:
+            u_pred = self.model_p(tf.concat([X_u, Z_u], axis=1))
+            f_pred = self.model_r(tf.concat([X_f, Z_f], axis=1))
+            loss_G, KL, recon, loss_PDE = self.generator_loss(X_u, u, u_pred, X_f, f_pred, Z_u, Z_f)
+        del tape
+        grads = tape.gradient(loss_G, self.wrap_training_variables())
+        return loss_G, KL, recon, loss_PDE, grads
 
-  def set_weights(self, w):
-    for i, layer in enumerate(self.model.layers[1:]):
-      start_weights = sum(self.sizes_w[:i]) + sum(self.sizes_b[:i])
-      end_weights = sum(self.sizes_w[:i+1]) + sum(self.sizes_b[:i])
-      weights = w[start_weights:end_weights]
-      w_div = int(self.sizes_w[i] / self.sizes_b[i])
-      weights = tf.reshape(weights, [w_div, self.sizes_b[i]])
-      biases = w[end_weights:end_weights + self.sizes_b[i]]
-      weights_biases = [weights, biases]
-      layer.set_weights(weights_biases)
+    def discriminator_grad(self, X_u, u, Z_u):
+        with tf.GradientTape(persistent=True) as tape:
+            loss_T = self.discriminator_loss(X_u, u, Z_u)
+        del tape
+        grads = tape.gradient(loss_T, self.wrap_training_variables())
+        return loss_T, grads
 
-  def get_loss_and_flat_grad(self, X, u):
-    def loss_and_flat_grad(w):
-      with tf.GradientTape() as tape:
-        self.set_weights(w)
-        loss_value = self.loss(u, self.model_p(X))
-      grad = tape.gradient(loss_value, self.wrap_training_variables())
-      grad_flat = []
-      for g in grad:
-        grad_flat.append(tf.reshape(g, [-1]))
-      grad_flat =  tf.concat(grad_flat, 0)
-      return loss_value, grad_flat
-      
-    return loss_and_flat_grad
+    # right hand side terms of the PDE
+    def f(self, X): 
+        raise NotImplementedError()
 
-  def summary(self):
-    return self.model_p.summary()
+    def model_r(self, XZ_f):
+        raise NotImplementedError()
 
-  # The training function
-  def fit(self, X_u, u):
-    self.logger.log_train_start(self)
+    def wrap_training_variables(self):
+        var = self.model_p.trainable_variables
+        return var
 
-    # Creating the tensors
-    X_u = tf.convert_to_tensor(X_u, dtype=self.dtype)
-    u = tf.convert_to_tensor(u, dtype=self.dtype)
+    def summary(self):
+        return self.model_p.summary()
 
-    self.logger.log_train_opt("Adam")
-    for epoch in range(self.epochs):
-      # Optimization step
-      loss_value, grads = self.grad(X_u, u)
-      self.optimizer_KL.apply_gradients(zip(grads, self.wrap_training_variables()))
-      self.logger.log_train_epoch(epoch, loss_value)
-    
-    # self.logger.log_train_opt("LBFGS")
-    # loss_and_flat_grad = self.get_loss_and_flat_grad(X_u, u)
-    # tfp.optimizer.lbfgs_minimize(
-    #   loss_and_flat_grad,
-    #   initial_position=self.get_weights(),
-    #   num_correction_pairs=nt_config.nCorrection,
-    #   max_iterations=nt_config.maxIter,
-    #   f_relative_tolerance=nt_config.tolFun,
-    #   tolerance=nt_config.tolFun,
-    #   parallel_iterations=6)
-    # lbfgs(loss_and_flat_grad,
-    #   self.get_weights(),
-    #   self.nt_config, Struct(), True,
-    #   lambda epoch, loss, is_iter:
-    #     self.logger.log_train_epoch(epoch, loss, "", is_iter))
-
-    self.logger.log_train_end(self.epochs + self.nt_config.maxIter)
-
-  def predict(self, X_star):
-    u_pred = self.model_p(X_star)
-    return u_pred.numpy()
+    def normalize(self, X):
+        raise NotImplementedError()
