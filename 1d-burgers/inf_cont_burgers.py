@@ -7,6 +7,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
 import numpy as np
 import tensorflow_probability as tfp
+from scipy.interpolate import griddata
 
 # Manually making sure the numpy random seeds are "the same" on all devices
 np.random.seed(1234)
@@ -24,8 +25,8 @@ from logger import Logger
 
 #%% HYPER PARAMETERS
 
-# if len(sys.argv) > 1:
-if False:
+if len(sys.argv) > 1:
+# if False:
     with open(sys.argv[1]) as hpFile:
         hp = json.load(hpFile)
 else:
@@ -46,7 +47,7 @@ else:
     hp["layers_Q"] = [hp["X_dim"]+hp["T_dim"]+hp["Y_dim"], 100, 100, 100, 100, hp["Z_dim"]]
     hp["layers_T"] = [hp["X_dim"]+hp["T_dim"]+hp["Y_dim"], 100, 100, 100, 100, 1]
     # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
-    hp["tf_epochs"] = 500
+    hp["tf_epochs"] = 30000
     hp["tf_lr"] = 0.0001
     hp["tf_b1"] = 0.9
     hp["tf_eps"] = None 
@@ -161,13 +162,29 @@ class BurgersInformedNN(AdvNeuralNetwork):
         
         self.logger.log_train_end(self.epochs)
 
-    def predict(self, X_star):
+    def predict_f(self, X_star):
         # Center around the origin
         X_star_norm = tf.convert_to_tensor(self.normalize(X_star), dtype=self.dtype)
         # Predict
         z_f = tf.convert_to_tensor(np.random.randn(X_star.shape[0], self.Z_dim), dtype=self.dtype)
         f_star = self.model_r(tf.concat([X_star_norm, z_f], axis=1))
         return f_star
+
+    def predict(self, X_star, X, T):
+      N_samples = 500
+      samples_mean = np.zeros((X_star.shape[0], N_samples))
+      for i in range(0, N_samples):
+          samples_mean[:,i:i+1] = self.generate_sample(X_star)
+
+      XT = np.hstack((X.flatten()[:,None], T.flatten()[:,None]))
+
+      # Compare mean and variance of the predicted samples as prediction and uncertainty
+      U_pred = np.mean(samples_mean, axis = 1)    
+      U_pred = griddata(XT, U_pred.flatten(), (X, T), method='cubic')
+      Sigma_pred = np.var(samples_mean, axis = 1)
+      Sigma_pred = griddata(XT, Sigma_pred.flatten(), (X, T), method='cubic')
+
+      return U_pred, Sigma_pred
 
 
 #%% TRAINING THE MODEL
@@ -177,13 +194,13 @@ path = os.path.join(eqnPath, "data", "burgers_shock.mat")
 x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f, ub, lb = prep_data(path, hp["N_i"], hp["N_b"], hp["N_f"], noise=0.0)
 
 # Creating the model
-logger = Logger(frequency=10, hp=hp)
+logger = Logger(frequency=100, hp=hp)
 pinn = BurgersInformedNN(hp, logger, X_f, ub, lb)
 
 # Defining the error function for the logger
 def error():
-  u_pred = pinn.predict(X_star)
-  return np.linalg.norm(u_star - u_pred, 2) / np.linalg.norm(u_star, 2)
+  U_pred, _ = pinn.predict(X_star, X, T)
+  return np.linalg.norm(Exact_u-U_pred,2)/np.linalg.norm(Exact_u,2)
 logger.set_error_fn(error)
 
 # Training the PINN
@@ -191,27 +208,27 @@ pinn.fit(X_u_train, u_train)
 
 #%%
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
-u_pred = pinn.predict(X_star)
-
-# Prediction
-N_samples = 500
-samples_mean = np.zeros((X_star.shape[0], N_samples))
-for i in range(0, N_samples):
-    samples_mean[:,i:i+1] = pinn.generate_sample(X_star)
-
-from scipy.interpolate import griddata
-XT = np.hstack((X.flatten()[:,None], T.flatten()[:,None]))
-
-# Compare mean and variance of the predicted samples as prediction and uncertainty
-U_pred = np.mean(samples_mean, axis = 1)    
-U_pred = griddata(XT, U_pred.flatten(), (X, T), method='cubic')
-Sigma_pred = np.var(samples_mean, axis = 1)
-Sigma_pred = griddata(XT, Sigma_pred.flatten(), (X, T), method='cubic')
-
+U_pred, Sigma_pred = pinn.predict(X_star, X, T)
 # Compare the relative error between the prediciton and the reference solution 
 error_u = np.linalg.norm(Exact_u-U_pred,2)/np.linalg.norm(Exact_u,2)
-#%% PLOTTING
-plot_inf_cont_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, t,
-  save_path=eqnPath, save_hp=hp) 
 
-#%%
+# # Prediction
+# N_samples = 500
+# samples_mean = np.zeros((X_star.shape[0], N_samples))
+# for i in range(0, N_samples):
+#     samples_mean[:,i:i+1] = pinn.generate_sample(X_star)
+
+# from scipy.interpolate import griddata
+# XT = np.hstack((X.flatten()[:,None], T.flatten()[:,None]))
+
+# # Compare mean and variance of the predicted samples as prediction and uncertainty
+# U_pred = np.mean(samples_mean, axis = 1)    
+# U_pred = griddata(XT, U_pred.flatten(), (X, T), method='cubic')
+# Sigma_pred = np.var(samples_mean, axis = 1)
+# Sigma_pred = griddata(XT, Sigma_pred.flatten(), (X, T), method='cubic')
+
+# # Compare the relative error between the prediciton and the reference solution 
+# error_u = np.linalg.norm(Exact_u-U_pred,2)/np.linalg.norm(Exact_u,2)
+#%% PLOTTING
+plot_inf_cont_results(X_star, U_pred, Sigma_pred, X_u_train, u_train, Exact_u, X, T, x, t,
+  save_path=eqnPath, save_hp=hp)

@@ -77,16 +77,23 @@ def prep_data(path, N_i, N_b, N_f, noise=0.0):
 
     return x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f_train, ub, lb
 
-def plot_inf_cont_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, t, save_path=None, save_hp=None):
+def plot_inf_cont_results(X_star, U_pred, Sigma_pred, X_u_train, u_train, Exact_u,
+  X, T, x, t, save_path=None, save_hp=None):
 
   # Interpolating the results on the whole (x,t) domain.
   # griddata(points, values, points at which to interpolate, method)
-  U_pred = griddata(X_star, u_pred, (X, T), method='cubic')
+  # U_pred = griddata(X_star, u_pred, (X, T), method='cubic')
 
   # Creating the figures
   fig, ax = newfig(1.0, 1.1)
   ax.axis('off')
-  
+
+  X_u = X_u_train[:, 0:1]
+  T_u = X_u_train[:, 1:2]
+  Y_u = u_train
+  Exact = Exact_u
+
+
   ####### Row 0: u(t,x) ##################    
   gs0 = gridspec.GridSpec(1, 2)
   gs0.update(top=1-0.06, bottom=1-1/3, left=0.15, right=0.85, wspace=0)
@@ -158,30 +165,35 @@ def plot_inf_cont_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, 
   ax.set_xlim([-1.1,1.1])
   ax.set_ylim([-1.1,1.1])    
   ax.set_title('$t = 0.75$', fontsize = 10)
-  savefig('./Prediction')
+
+
+  # savefig('./Prediction')
   
 
-  fig, ax = newfig(1.0)
-  ax.axis('off')
+  # fig, ax = newfig(1.0)
+  # ax.axis('off')
   
-  #############       Uncertainty       ##################
-  gs2 = gridspec.GridSpec(1, 2)
-  gs2.update(top=1-0.06, bottom=1-1/3, left=0.15, right=0.85, wspace=0)
-  ax = plt.subplot(gs2[:, :])
+  # #############       Uncertainty       ##################
+  # gs2 = gridspec.GridSpec(1, 2)
+  # gs2.update(top=1-0.06, bottom=1-1/3, left=0.15, right=0.85, wspace=0)
+  # ax = plt.subplot(gs2[:, :])
   
-  h = ax.imshow(Sigma_pred.T, interpolation='nearest', cmap='rainbow', 
-                extent=[t.min(), t.max(), x.min(), x.max()], 
-                origin='lower', aspect='auto')
-  divider = make_axes_locatable(ax)
-  cax = divider.append_axes("right", size="5%", pad=0.05)
-  fig.colorbar(h, cax=cax)
-  ax.set_xlabel('$t$')
-  ax.set_ylabel('$x$')
-  ax.legend(frameon=False, loc = 'best')
-  ax.set_title('Variance of $u(t,x)$', fontsize = 10)
+  # h = ax.imshow(Sigma_pred.T, interpolation='nearest', cmap='rainbow', 
+  #               extent=[t.min(), t.max(), x.min(), x.max()], 
+  #               origin='lower', aspect='auto')
+  # divider = make_axes_locatable(ax)
+  # cax = divider.append_axes("right", size="5%", pad=0.05)
+  # fig.colorbar(h, cax=cax)
+  # ax.set_xlabel('$t$')
+  # ax.set_ylabel('$x$')
+  # ax.legend(frameon=False, loc = 'best')
+  # ax.set_title('Variance of $u(t,x)$', fontsize = 10)
 
   if save_path != None and save_hp != None:
       saveResultDir(save_path, save_hp)
 
   else:
     plt.show()
+
+
+#%%
