@@ -55,13 +55,13 @@ class AdvNeuralNetwork(object):
     def generator_loss(self, X_u, u, u_pred, X_f, f_pred, Z_u, Z_f):
         # Prior:
         z_u_prior = Z_u
-        z_f_prior = Z_f
+        # z_f_prior = Z_f
         # Encoder: q(z|x,y)
         z_u_encoder = self.model_q(tf.concat([X_u, u_pred], axis=1))
-        z_f_encoder = self.model_q(tf.concat([X_f, f_pred], axis=1))
+        # z_f_encoder = self.model_q(tf.concat([X_f, f_pred], axis=1))
         
         # Discriminator loss
-        Y_pred = self.model_p(tf.concat([X_u, Z_u], axis=1))
+        # Y_pred = self.model_p(tf.concat([X_u, Z_u], axis=1))
         T_pred = self.model_t(tf.concat([X_u, u_pred], axis=1))
         
         # KL-divergence between the data distribution and the model distribution
@@ -101,15 +101,15 @@ class AdvNeuralNetwork(object):
             u_pred = self.model_p(tf.concat([X_u, Z_u], axis=1))
             f_pred = self.model_r(tf.concat([X_f, Z_f], axis=1))
             loss_G, KL, recon, loss_PDE = self.generator_loss(X_u, u, u_pred, X_f, f_pred, Z_u, Z_f)
-        del tape
         grads = tape.gradient(loss_G, self.wrap_training_variables())
+        del tape
         return loss_G, KL, recon, loss_PDE, grads
 
     def discriminator_grad(self, X_u, u, Z_u):
         with tf.GradientTape(persistent=True) as tape:
             loss_T = self.discriminator_loss(X_u, u, Z_u)
-        del tape
         grads = tape.gradient(loss_T, self.wrap_training_variables())
+        del tape
         return loss_T, grads
 
     # right hand side terms of the PDE
@@ -128,3 +128,19 @@ class AdvNeuralNetwork(object):
 
     def normalize(self, X):
         raise NotImplementedError()
+
+    # Generate samples of y given x by sampling from the latent space z
+    def sample_generator(self, X_u, Z_u):        
+        # Prior: 
+        z_prior = Z_u    
+        # Decoder: p(y|x,z)
+        Y_pred = self.model_p(tf.concat([X_u, z_prior], axis=1))      
+        return Y_pred
+
+    # Predict y given x
+    def generate_sample(self, X_star):
+        X_star = tf.convert_to_tensor(self.normalize(X_star), dtype=self.dtype)
+        Z = np.random.randn(X_star.shape[0], 1)
+        Y_star = self.sample_generator(X_star, Z) 
+        Y_star = Y_star 
+        return Y_star

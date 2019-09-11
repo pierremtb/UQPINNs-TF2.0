@@ -24,7 +24,8 @@ from logger import Logger
 
 #%% HYPER PARAMETERS
 
-if len(sys.argv) > 1:
+# if len(sys.argv) > 1:
+if False:
     with open(sys.argv[1]) as hpFile:
         hp = json.load(hpFile)
 else:
@@ -111,7 +112,7 @@ class BurgersInformedNN(AdvNeuralNetwork):
             u = self.model_p(tf.concat([X, z_prior], axis=1))
             u_x = tape.gradient(u, x_f)
         u_t = tape.gradient(u, t_f)
-        u_xx = ttapef.gradient(u_x, x_f)
+        u_xx = tape.gradient(u_x, x_f)
         del tape
         f = self.f(X)
         r = (self.Jacobian_T) * u_t + (self.Jacobian_X) * u * u_x - (0.01/np.pi) * (self.Jacobian_X ** 2) * u_xx - f
@@ -126,7 +127,7 @@ class BurgersInformedNN(AdvNeuralNetwork):
         X_u_batch = tf.convert_to_tensor(X_u[idx_u,:], dtype=self.dtype)
         X_f_batch = tf.convert_to_tensor(X_f[idx_f,:], dtype=self.dtype)
         u_batch = tf.convert_to_tensor(u[idx_u,:], dtype=self.dtype)
-        return X_u_batch, X_f_batch, u_batch
+        return X_u_batch, u_batch, X_f_batch
 
     # The training function
     def fit(self, X_u, u):
@@ -145,25 +146,28 @@ class BurgersInformedNN(AdvNeuralNetwork):
 
             # Dual-Optimization step
             for _ in range(self.k1):
-                loss_T, grads = \
+                loss_G, loss_KL, loss_recon, loss_PDE, grads = \
                     self.generator_grad(X_u_batch, u_batch, X_f_batch, Z_u, Z_f)
                 self.optimizer_T.apply_gradients(
                     zip(grads, self.wrap_training_variables()))
             for _ in range(self.k2):
-                loss_G, loss_KL, loss_recon, loss_PDE, grads = \
+                loss_T, grads = \
                     self.discriminator_grad(X_u_batch, u_batch, Z_u)
                 self.optimizer_KL.apply_gradients(
                     zip(grads, self.wrap_training_variables()))
 
             loss_str = f"KL_loss: {loss_KL:.2e}, Recon_loss: {loss_recon:.2e}, PDE_loss: {loss_PDE:.2e}, T_loss: {loss_T:.2e}" 
-            self.logger.log_train_epoch(epoch, 0.0, custom=loss_str)
+            self.logger.log_train_epoch(epoch, loss_G, custom=loss_str)
         
         self.logger.log_train_end(self.epochs)
 
     def predict(self, X_star):
-        u_pred = self.model_p(X_star)
-        return u_pred.numpy()
-
+        # Center around the origin
+        X_star_norm = tf.convert_to_tensor(self.normalize(X_star), dtype=self.dtype)
+        # Predict
+        z_f = tf.convert_to_tensor(np.random.randn(X_star.shape[0], self.Z_dim), dtype=self.dtype)
+        f_star = self.model_r(tf.concat([X_star_norm, z_f], axis=1))
+        return f_star
 
 
 #%% TRAINING THE MODEL
@@ -185,9 +189,29 @@ logger.set_error_fn(error)
 # Training the PINN
 pinn.fit(X_u_train, u_train)
 
+#%%
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
 u_pred = pinn.predict(X_star)
 
+# Prediction
+N_samples = 500
+samples_mean = np.zeros((X_star.shape[0], N_samples))
+for i in range(0, N_samples):
+    samples_mean[:,i:i+1] = pinn.generate_sample(X_star)
+
+from scipy.interpolate import griddata
+XT = np.hstack((X.flatten()[:,None], T.flatten()[:,None]))
+
+# Compare mean and variance of the predicted samples as prediction and uncertainty
+U_pred = np.mean(samples_mean, axis = 1)    
+U_pred = griddata(XT, U_pred.flatten(), (X, T), method='cubic')
+Sigma_pred = np.var(samples_mean, axis = 1)
+Sigma_pred = griddata(XT, Sigma_pred.flatten(), (X, T), method='cubic')
+
+# Compare the relative error between the prediciton and the reference solution 
+error_u = np.linalg.norm(Exact_u-U_pred,2)/np.linalg.norm(Exact_u,2)
 #%% PLOTTING
 plot_inf_cont_results(X_star, u_pred, X_u_train, u_train, Exact_u, X, T, x, t,
   save_path=eqnPath, save_hp=hp) 
+
+#%%
