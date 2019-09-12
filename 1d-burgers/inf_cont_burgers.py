@@ -1,32 +1,27 @@
-#%% IMPORTING/SETTING UP PATHS
-
+import numpy as np
+import tensorflow as tf
 import sys
 import json
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-import tensorflow as tf
-import numpy as np
-import tensorflow_probability as tfp
 from scipy.interpolate import griddata
 
 # Manually making sure the numpy random seeds are "the same" on all devices
 np.random.seed(1234)
 tf.random.set_seed(1234)
 
-#%% LOCAL IMPORTS
+# %% LOCAL IMPORTS
 
 eqnPath = "1d-burgers"
 sys.path.append(eqnPath)
 sys.path.append("utils")
-from custom_lbfgs import lbfgs, Struct
+from logger import Logger
 from burgersutil import prep_data, plot_inf_cont_results
 from advneuralnetwork import AdvNeuralNetwork
-from logger import Logger
 
-#%% HYPER PARAMETERS
+# %% HYPER PARAMETERS
 
 if len(sys.argv) > 1:
-# if False:
+    # if False:
     with open(sys.argv[1]) as hpFile:
         hp = json.load(hpFile)
 else:
@@ -38,19 +33,21 @@ else:
     # Collocation points on the domain
     hp["N_f"] = 10000
     # Dimension of input, output and latent variable
-    hp["X_dim"] = 1 
+    hp["X_dim"] = 1
     hp["Y_dim"] = 1
     hp["T_dim"] = 1
     hp["Z_dim"] = 1
     # DeepNN topology (2-sized input [x t], 4 hidden layer of 100-width, 2-sized output [u, v])
-    hp["layers_P"] = [hp["X_dim"]+hp["T_dim"]+hp["Z_dim"], 100, 100, 100, 100, hp["Y_dim"]]
-    hp["layers_Q"] = [hp["X_dim"]+hp["T_dim"]+hp["Y_dim"], 100, 100, 100, 100, hp["Z_dim"]]
+    hp["layers_P"] = [hp["X_dim"]+hp["T_dim"] +
+                      hp["Z_dim"], 100, 100, 100, 100, hp["Y_dim"]]
+    hp["layers_Q"] = [hp["X_dim"]+hp["T_dim"] +
+                      hp["Y_dim"], 100, 100, 100, 100, hp["Z_dim"]]
     hp["layers_T"] = [hp["X_dim"]+hp["T_dim"]+hp["Y_dim"], 100, 100, 100, 100, 1]
     # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
     hp["tf_epochs"] = 30000
     hp["tf_lr"] = 0.0001
     hp["tf_b1"] = 0.9
-    hp["tf_eps"] = None 
+    hp["tf_eps"] = None
     # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
     # hp["nt_epochs"] = 500
     # hp["nt_lr"] = 1.0
@@ -65,12 +62,13 @@ else:
     hp["batch_size_u"] = hp["N_i"] + hp["N_b"]
     hp["batch_size_f"] = hp["N_f"]
 
-#%% DEFINING THE MODEL
+# %% DEFINING THE MODEL
+
 
 class BurgersInformedNN(AdvNeuralNetwork):
     def __init__(self, hp, logger, X_f, ub, lb):
         super().__init__(hp, logger, ub, lb)
-        
+
         # Separating the collocation coordinates and normalizing
         x_f = X_f[:, 0:1]
         t_f = X_f[:, 1:2]
@@ -79,11 +77,11 @@ class BurgersInformedNN(AdvNeuralNetwork):
         self.t_mean = t_f.mean(0)
         self.t_std = t_f.std(0)
         self.x_f = tf.convert_to_tensor(
-          (x_f - self.x_mean) / self.x_std,
-          dtype=self.dtype)
+            (x_f - self.x_mean) / self.x_std,
+            dtype=self.dtype)
         self.t_f = tf.convert_to_tensor(
-          (x_f - self.x_mean) / self.x_std,
-          dtype=self.dtype)
+            (x_f - self.x_mean) / self.x_std,
+            dtype=self.dtype)
 
         self.Jacobian_X = 1 / self.x_std
         self.Jacobian_T = 1 / self.t_std
@@ -99,7 +97,7 @@ class BurgersInformedNN(AdvNeuralNetwork):
         t = self.normalize_t(X[:, 1:2])
         return np.concatenate((x, t), axis=1)
 
-    def f(self, X): 
+    def f(self, X):
         return tf.zeros_like(X)
 
     def model_r(self, XZ_f):
@@ -115,19 +113,21 @@ class BurgersInformedNN(AdvNeuralNetwork):
         u_t = tape.gradient(u, t_f)
         u_xx = tape.gradient(u_x, x_f)
         del tape
-        f = self.f(X)
-        r = (self.Jacobian_T) * u_t + (self.Jacobian_X) * u * u_x - (0.01/np.pi) * (self.Jacobian_X ** 2) * u_xx - f
+        f = self.f(x_f)
+        r = (self.Jacobian_T) * u_t + \
+            (self.Jacobian_X) * u * u_x - \
+            (0.01/np.pi) * (self.Jacobian_X ** 2) * u_xx - f
         return r
-    
+
   # Fetches a mini-batch of data
     def fetch_minibatch(self, X_u, u, X_f):
         N_u = X_u.shape[0]
         N_f = X_f.shape[0]
         idx_u = np.random.choice(N_u, self.batch_size_u, replace=False)
         idx_f = np.random.choice(N_f, self.batch_size_f, replace=False)
-        X_u_batch = tf.convert_to_tensor(X_u[idx_u,:], dtype=self.dtype)
-        X_f_batch = tf.convert_to_tensor(X_f[idx_f,:], dtype=self.dtype)
-        u_batch = tf.convert_to_tensor(u[idx_u,:], dtype=self.dtype)
+        X_u_batch = tf.convert_to_tensor(X_u[idx_u, :], dtype=self.dtype)
+        X_f_batch = tf.convert_to_tensor(X_f[idx_f, :], dtype=self.dtype)
+        u_batch = tf.convert_to_tensor(u[idx_u, :], dtype=self.dtype)
         return X_u_batch, u_batch, X_f_batch
 
     # The training function
@@ -141,76 +141,84 @@ class BurgersInformedNN(AdvNeuralNetwork):
         self.logger.log_train_opt("Adam")
         for epoch in range(self.epochs):
             X_u_batch, u_batch, X_f_batch = self.fetch_minibatch(X_u, u, X_f)
-            
+
             Z_u = np.random.randn(self.batch_size_u, 1)
             Z_f = np.random.randn(self.batch_size_f, 1)
 
             # Dual-Optimization step
             for _ in range(self.k1):
                 loss_G, loss_KL, loss_recon, loss_PDE, grads = \
-                    self.generator_grad(X_u_batch, u_batch, X_f_batch, Z_u, Z_f)
-                self.optimizer_T.apply_gradients(
-                    zip(grads, self.wrap_training_variables()))
+                    self.generator_grad(X_u_batch, u_batch,
+                                        X_f_batch, Z_u, Z_f)
+                self.optimizer_KL.apply_gradients(
+                    zip(grads, self.wrap_generator_variables()))
             for _ in range(self.k2):
                 loss_T, grads = \
                     self.discriminator_grad(X_u_batch, u_batch, Z_u)
-                self.optimizer_KL.apply_gradients(
-                    zip(grads, self.wrap_training_variables()))
+                self.optimizer_T.apply_gradients(
+                    zip(grads, self.wrap_discriminator_variables()))
 
-            loss_str = f"KL_loss: {loss_KL:.2e}, Recon_loss: {loss_recon:.2e}, PDE_loss: {loss_PDE:.2e}, T_loss: {loss_T:.2e}" 
+            loss_str = f"KL_loss: {loss_KL:.2e}, Recon_loss: {loss_recon:.2e}, PDE_loss: {loss_PDE:.2e}, T_loss: {loss_T:.2e}"
             self.logger.log_train_epoch(epoch, loss_G, custom=loss_str)
-        
+
         self.logger.log_train_end(self.epochs)
 
     def predict_f(self, X_star):
         # Center around the origin
-        X_star_norm = tf.convert_to_tensor(self.normalize(X_star), dtype=self.dtype)
+        X_star_norm = tf.convert_to_tensor(
+            self.normalize(X_star), dtype=self.dtype)
         # Predict
-        z_f = tf.convert_to_tensor(np.random.randn(X_star.shape[0], self.Z_dim), dtype=self.dtype)
+        z_f = tf.convert_to_tensor(np.random.randn(
+            X_star.shape[0], self.Z_dim), dtype=self.dtype)
         f_star = self.model_r(tf.concat([X_star_norm, z_f], axis=1))
         return f_star
 
     def predict(self, X_star, X, T):
-      N_samples = 500
-      samples_mean = np.zeros((X_star.shape[0], N_samples))
-      for i in range(0, N_samples):
-          samples_mean[:,i:i+1] = self.generate_sample(X_star)
+        N_samples = 500
+        samples_mean = np.zeros((X_star.shape[0], N_samples))
+        for i in range(0, N_samples):
+            samples_mean[:, i:i+1] = self.generate_sample(X_star)
 
-      XT = np.hstack((X.flatten()[:,None], T.flatten()[:,None]))
+        XT = np.hstack((X.flatten()[:, None], T.flatten()[:, None]))
 
-      # Compare mean and variance of the predicted samples as prediction and uncertainty
-      U_pred = np.mean(samples_mean, axis = 1)    
-      U_pred = griddata(XT, U_pred.flatten(), (X, T), method='cubic')
-      Sigma_pred = np.var(samples_mean, axis = 1)
-      Sigma_pred = griddata(XT, Sigma_pred.flatten(), (X, T), method='cubic')
+        # Compare mean and variance of the predicted samples as prediction and uncertainty
+        U_pred = np.mean(samples_mean, axis=1)
+        U_pred = griddata(XT, U_pred.flatten(), (X, T), method='cubic')
+        Sigma_pred = np.var(samples_mean, axis=1)
+        Sigma_pred = griddata(XT, Sigma_pred.flatten(), (X, T), method='cubic')
 
-      return U_pred, Sigma_pred
+        return U_pred, Sigma_pred
 
 
-#%% TRAINING THE MODEL
+# %% TRAINING THE MODEL
 
 # Getting the data
 path = os.path.join(eqnPath, "data", "burgers_shock.mat")
-x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f, ub, lb = prep_data(path, hp["N_i"], hp["N_b"], hp["N_f"], noise=0.0)
+x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f, ub, lb = prep_data(
+    path, hp["N_i"], hp["N_b"], hp["N_f"], noise=0.0)
 
 # Creating the model
-logger = Logger(frequency=100, hp=hp)
+logger = Logger(frequency=10, hp=hp)
 pinn = BurgersInformedNN(hp, logger, X_f, ub, lb)
 
 # Defining the error function for the logger
+
+
 def error():
-  U_pred, _ = pinn.predict(X_star, X, T)
-  return np.linalg.norm(Exact_u-U_pred,2)/np.linalg.norm(Exact_u,2)
+    U_pred, _ = pinn.predict(X_star, X, T)
+    return np.linalg.norm(Exact_u-U_pred, 2)/np.linalg.norm(Exact_u, 2)
+
+
 logger.set_error_fn(error)
 
 # Training the PINN
 pinn.fit(X_u_train, u_train)
 
-#%%
+# %%
 # Getting the model predictions, from the same (x,t) that the predictions were previously gotten from
 U_pred, Sigma_pred = pinn.predict(X_star, X, T)
-# Compare the relative error between the prediciton and the reference solution 
-error_u = np.linalg.norm(Exact_u-U_pred,2)/np.linalg.norm(Exact_u,2)
+# Compare the relative error between the prediciton and the reference solution
+error_u = np.linalg.norm(Exact_u-U_pred, 2)/np.linalg.norm(Exact_u, 2)
 
 # # Prediction
 # N_samples = 500
@@ -222,13 +230,13 @@ error_u = np.linalg.norm(Exact_u-U_pred,2)/np.linalg.norm(Exact_u,2)
 # XT = np.hstack((X.flatten()[:,None], T.flatten()[:,None]))
 
 # # Compare mean and variance of the predicted samples as prediction and uncertainty
-# U_pred = np.mean(samples_mean, axis = 1)    
+# U_pred = np.mean(samples_mean, axis = 1)
 # U_pred = griddata(XT, U_pred.flatten(), (X, T), method='cubic')
 # Sigma_pred = np.var(samples_mean, axis = 1)
 # Sigma_pred = griddata(XT, Sigma_pred.flatten(), (X, T), method='cubic')
 
-# # Compare the relative error between the prediciton and the reference solution 
+# # Compare the relative error between the prediciton and the reference solution
 # error_u = np.linalg.norm(Exact_u-U_pred,2)/np.linalg.norm(Exact_u,2)
-#%% PLOTTING
+# %% PLOTTING
 plot_inf_cont_results(X_star, U_pred, Sigma_pred, X_u_train, u_train, Exact_u, X, T, x, t,
-  save_path=eqnPath, save_hp=hp)
+                      save_path=eqnPath, save_hp=hp)
