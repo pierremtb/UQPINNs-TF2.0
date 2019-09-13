@@ -1,5 +1,3 @@
-#%% Utils for Burger's equation
-
 import scipy.io
 import numpy as np
 import tensorflow as tf
@@ -17,65 +15,88 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 sys.path.append("utils")
 from plotting import newfig, savefig, saveResultDir
 
-def prep_data(path, N_i, N_b, N_f, noise=0.0):
-    N_u = N_b + N_i
 
-    # Reading external data [t is 100x1, usol is 256x100 (solution), x is 256x1]
+def scarcify(X, u, N): 
+    idx = np.random.choice(X.shape[0], N, replace=False)
+    return X[idx, :], u[idx, :]
+
+def prep_data(path, N_i, N_b, N_f, noise=0.0, noise_is_gaussian=True):
+
+    # Reading external data [t is 100x1, usol is 256x100, x is 256x1]
     data = scipy.io.loadmat(path)
 
-    # Flatten makes [[]] into [], [:,None] makes it a column vector
-    t = data['t'].flatten()[:,None] # T x 1
-    x = data['x'].flatten()[:,None] # N x 1
+    # Flatten makes [[]] into []
+    # [:,None] makes it a column vector
+    # t is T x 1, x is N x 1
+    t = data['t'].flatten()[:, None]
+    x = data['x'].flatten()[:, None]
 
-    # Keeping the 2D data for the solution data (real() is maybe to make it float by default, in case of zeroes)
-    Exact_u = np.real(data['usol']).T # T x N
-
-    # x = np.load("1d-burgers/data/burgers_x.npy")[:, None]
-    # t = np.load("1d-burgers/data/burgers_t.npy")[:, None]
-    # Exact_u = np.load("1d-burgers/data/burgers_u.npy").T
+    # Keeping the 2D data for the solution data (T x N)
+    Exact_u = np.real(data['usol']).T
 
     # Meshing x and t in 2D (256,100)
-    X, T = np.meshgrid(x,t)
+    X, T = np.meshgrid(x, t)
 
-    # Preparing the inputs x and t (meshed as X, T) for predictions in one single array, as X_star
-    X_star = np.hstack((X.flatten()[:,None], T.flatten()[:,None]))
+    # Preparing the inputs (meshed as X, T) for pred as X_star
+    X_star = np.hstack((X.flatten()[:, None], T.flatten()[:, None]))
 
     # Preparing the testing u_star
-    u_star = Exact_u.flatten()[:,None]
+    u_star = Exact_u.flatten()[:, None]
                 
-    # Noiseless data TODO: add support for noisy data    
-    idx = np.random.choice(X_star.shape[0], N_u, replace=False)
-    X_u_train = X_star[idx,:]
-    u_train = u_star[idx,:]
-
-    # Domain bounds (lowerbounds upperbounds) [x, t], which are here ([-1.0, 0.0] and [1.0, 1.0])
+    # Getting the domain bounds 
     lb = X_star.min(axis=0)
-    ub = X_star.max(axis=0) 
-    # Getting the initial conditions (t=0)
-    xx1 = np.hstack((X[0:1,:].T, T[0:1,:].T))
-    uu1 = Exact_u[0:1,:].T
-    # Getting the lowest boundary conditions (x=-1) 
-    xx2 = np.hstack((X[:,0:1], T[:,0:1]))
-    uu2 = Exact_u[:,0:1]
-    # Getting the highest boundary conditions (x=1) 
-    xx3 = np.hstack((X[:,-1:], T[:,-1:]))
-    uu3 = Exact_u[:,-1:]
-    # Stacking them in multidimensional tensors for training (X_u_train is for now the continuous boundaries)
-    X_u_train = np.vstack([xx1, xx2, xx3])
-    u_train = np.vstack([uu1, uu2, uu3])
+    ub = X_star.max(axis=0)
 
-    # Generating the x and t collocation points for f, with each having a N_f size
+    # Getting the initial conditions (t=0)
+    X_i = np.hstack((X[0:1, :].T, T[0:1, :].T))
+    u_i = Exact_u[0:1, :].T    
+    X_i, u_i_0 = scarcify(X_i, u_i, N_i)
+    if noise_is_gaussian or noise == 0.0:
+        u_i = u_i_0 + \
+            noise*np.std(u_i_0)*np.random.randn(u_i_0.shape[0], u_i_0.shape[1])
+    else:
+        # Fabricating a non-additive, non gaussian noise
+        x_i = X_i[:, 0:1]
+        error = 1.0/np.exp(3.0*(abs(x_i))) * \
+            np.random.normal(0, noise, x_i.size)[:, None]
+        u_i = -np.sin(np.pi*(x_i + 2*error)) + error
+        print(x_i.shape)
+        print(u_i.shape)
+    # Getting the lowest boundary conditions (x=-1) 
+    X_bl = np.hstack((X[:, 0:1], T[:, 0:1]))
+    u_bl = Exact_u[:, 0:1]
+    X_bl, u_bl = scarcify(X_bl, u_bl, N_b // 2)
+    # Getting the highest boundary conditions (x=1) 
+    X_bh = np.hstack((X[:, -1:], T[:, -1:]))
+    u_bh = Exact_u[:, -1:]
+    X_bh, u_bh = scarcify(X_bh, u_bh, N_b // 2)
+    
+    # Stacking them in multidimensional tensors for training
+    # (X_u_train is for now the continuous boundaries)
+    X_u_train = np.vstack([X_i, X_bl, X_bh])
+    u_train = np.vstack([u_i, u_bl, u_bh])
+
+    # Generating the x and t colloc points for f, with each having a N_f size
     # We pointwise add and multiply to spread the LHS over the 2D domain
     X_f_train = lb + (ub-lb)*lhs(2, N_f)
 
-    # Generating a uniform random sample from ints between 0, and the size of x_u_train, of size N_u (initial data size) and without replacement (unique)
-    idx = np.random.choice(X_u_train.shape[0], N_u, replace=False)
-    # Getting the corresponding X_u_train (which is now scarce boundary/initial coordinates)
-    X_u_train = X_u_train[idx,:]
-    # Getting the corresponding u_train
-    u_train = u_train [idx,:]
-
-    return x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f_train, ub, lb
+    # Plot the exact initial condition with the data for the initial condition
+    plt.figure(1, figsize=(6, 4))
+    plt.xticks(fontsize=11)
+    plt.yticks(fontsize=11)
+    plt.plot(X[0:1, :].T, Exact_u[0:1, :].T, "b-", label="Exact", linewidth=2)
+    plt.plot(X_i[:, 0:1], u_i, "kx", label="Non-noisy initial condition",
+             alpha=1.)
+    plt.legend(loc="upper right", frameon=False, prop={'size': 11})
+    plt.gca()
+    plt.xlim(-1.0, 1.0)
+    plt.xlabel("$x$", fontsize=11)
+    plt.ylabel("$u(0, x)$", fontsize=11)
+    # plt.savefig("./Initial.png", dpi=600)
+    plt.show()
+    exit(0)
+    return x, t, X, T, Exact_u, X_star, u_star, \
+        X_u_train, u_train, X_f_train, ub, lb
 
 def plot_inf_cont_results(X_star, U_pred, Sigma_pred, X_u_train, u_train, Exact_u,
   X, T, x, t, save_path=None, save_hp=None):

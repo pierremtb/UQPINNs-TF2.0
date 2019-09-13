@@ -1,12 +1,6 @@
-import sys
-import json
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-import tensorflow as tf
 import numpy as np
-import tensorflow_probability as tfp
+import tensorflow as tf
 
-from custom_lbfgs import lbfgs, Struct
 
 class AdvNeuralNetwork(object):
     def __init__(self, hp, logger, ub, lb):
@@ -51,7 +45,7 @@ class AdvNeuralNetwork(object):
                 kernel_initializer="glorot_normal"))
         return model
 
-    # Mininizing the KL
+    # Mininizing the G-Loss
     def generator_loss(self, X_u, u, u_pred, X_f, f_pred, Z_u, Z_f):
         # Prior:
         z_u_prior = Z_u
@@ -59,68 +53,77 @@ class AdvNeuralNetwork(object):
         # Encoder: q(z|x,y)
         z_u_encoder = self.model_q(tf.concat([X_u, u_pred], axis=1))
         # z_f_encoder = self.model_q(tf.concat([X_f, f_pred], axis=1))
-        
+
         # Discriminator loss
-        # Y_pred = self.model_p(tf.concat([X_u, Z_u], axis=1))
-        T_pred = self.model_t(tf.concat([X_u, u_pred], axis=1))
-        
-        # KL-divergence between the data distribution and the model distribution
+        Y_pred = self.model_p(tf.concat([X_u, Z_u], axis=1))
+        T_pred = self.model_t(tf.concat([X_u, Y_pred], axis=1))
+
+        # KL-divergence between the data and model distributions
         KL = tf.reduce_mean(T_pred)
 
         # Entropic regularization
         log_q = - tf.reduce_mean(tf.square(z_u_prior - z_u_encoder))
-        
+
         # Physics-informed loss
         loss_f = tf.reduce_mean(tf.square(f_pred))
 
         # Generator loss
         loss = KL + (1.0 - self.kl_lambda)*log_q + self.kl_beta * loss_f
-        
+
         return loss, KL, (1.0 - self.kl_lambda)*log_q, self.kl_beta * loss_f
 
+    # Minimizing the D-loss
     def discriminator_loss(self, X_u, u, Z_u):
         # Prior: p(z)
         z_prior = Z_u
         # Decoder: p(y|x,z)
-        u_pred = self.model_p(tf.concat([X_u, z_prior], axis=1))                
-        
+        u_pred = self.model_p(tf.concat([X_u, z_prior], axis=1))
+
         # Discriminator loss
         T_real = self.model_t(tf.concat([X_u, u], axis=1))
         T_fake = self.model_t(tf.concat([X_u, u_pred], axis=1))
-        
+
         T_real = tf.sigmoid(T_real)
         T_fake = tf.sigmoid(T_fake)
-        
-        T_loss = -tf.reduce_mean(tf.math.log(1.0 - T_real + 1e-8) + \
-                                 tf.math.log(T_fake + 1e-8)) 
-        
+
+        T_loss = -tf.reduce_mean(tf.math.log(1.0 - T_real + 1e-8) +
+                                 tf.math.log(T_fake + 1e-8))
+
         return T_loss
 
     def generator_grad(self, X_u, u, X_f, Z_u, Z_f):
         with tf.GradientTape(persistent=True) as tape:
             u_pred = self.model_p(tf.concat([X_u, Z_u], axis=1))
             f_pred = self.model_r(tf.concat([X_f, Z_f], axis=1))
-            loss_G, KL, recon, loss_PDE = self.generator_loss(X_u, u, u_pred, X_f, f_pred, Z_u, Z_f)
-        grads = tape.gradient(loss_G, self.wrap_training_variables())
+            loss_G, KL, recon, loss_PDE = \
+                self.generator_loss(X_u, u, u_pred, X_f, f_pred, Z_u, Z_f)
+        grads = tape.gradient(loss_G, self.wrap_generator_variables())
         del tape
         return loss_G, KL, recon, loss_PDE, grads
 
     def discriminator_grad(self, X_u, u, Z_u):
         with tf.GradientTape(persistent=True) as tape:
             loss_T = self.discriminator_loss(X_u, u, Z_u)
-        grads = tape.gradient(loss_T, self.wrap_training_variables())
+        grads = tape.gradient(loss_T, self.wrap_discriminator_variables())
         del tape
         return loss_T, grads
 
     # right hand side terms of the PDE
-    def f(self, X): 
+    def f(self, X):
         raise NotImplementedError()
 
     def model_r(self, XZ_f):
         raise NotImplementedError()
 
-    def wrap_training_variables(self):
-        var = self.model_p.trainable_variables
+    def wrap_generator_variables(self):
+        var = []
+        var.extend(self.model_p.trainable_variables)
+        var.extend(self.model_q.trainable_variables)
+        return var
+
+    def wrap_discriminator_variables(self):
+        var = []
+        var.extend(self.model_t.trainable_variables)
         return var
 
     def summary(self):
@@ -129,18 +132,20 @@ class AdvNeuralNetwork(object):
     def normalize(self, X):
         raise NotImplementedError()
 
+    def tensor(self, X):
+        return tf.convert_to_tensor(X, dtype=self.dtype)
+
     # Generate samples of y given x by sampling from the latent space z
-    def sample_generator(self, X_u, Z_u):        
-        # Prior: 
-        z_prior = Z_u    
+    def sample_generator(self, X, Z):
+        # Prior:
+        z_prior = Z
         # Decoder: p(y|x,z)
-        Y_pred = self.model_p(tf.concat([X_u, z_prior], axis=1))      
+        Y_pred = self.model_p(tf.concat([X, z_prior], axis=1))
         return Y_pred
 
     # Predict y given x
     def generate_sample(self, X_star):
-        X_star = tf.convert_to_tensor(self.normalize(X_star), dtype=self.dtype)
+        X_star = self.tensor(self.normalize(X_star))
         Z = np.random.randn(X_star.shape[0], 1)
-        Y_star = self.sample_generator(X_star, Z) 
-        Y_star = Y_star 
+        Y_star = self.sample_generator(X_star, Z)
         return Y_star
