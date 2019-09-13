@@ -35,7 +35,7 @@ class Logger(object):
 
   def log_train_epoch(self, epoch, loss, custom="", is_iter=False):
     if epoch % self.frequency == 0:
-      print(f"{'nt_epoch' if is_iter else 'tf_epoch'} = {epoch:6d}  elapsed = {self.__get_elapsed()}  loss = {loss:.4e}  error = {self.__get_error_u():.4e}  " + custom)
+      print(f"{'nt_epoch' if is_iter else 'tf_epoch'} = {epoch:6d}  elapsed = {self.__get_elapsed()}  " + custom)
 
   def log_train_opt(self, name):
     # print(f"tf_epoch =      0  elapsed = 00:00  loss = 2.7391e-01  error = 9.0843e-01")

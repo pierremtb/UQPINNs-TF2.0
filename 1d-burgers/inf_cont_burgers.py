@@ -60,8 +60,8 @@ else:
     hp["lambda"] = 1.5
     hp["beta"] = 1.0
     # MinMax switching
-    hp["k1"] = 1
-    hp["k2"] = 5
+    hp["k1"] = 5
+    hp["k2"] = 1
     # Batch size
     hp["batch_size_u"] = hp["N_i"] + hp["N_b"]
     hp["batch_size_f"] = hp["N_f"]
@@ -76,6 +76,7 @@ class BurgersInformedNN(AdvNeuralNetwork):
         # Separating the collocation coordinates and normalizing
         x_f = X_f[:, 0:1]
         t_f = X_f[:, 1:2]
+
         self.x_mean = x_f.mean(0)
         self.x_std = x_f.std(0)
         self.t_mean = t_f.mean(0)
@@ -97,8 +98,8 @@ class BurgersInformedNN(AdvNeuralNetwork):
         t = self.normalize_t(X[:, 1:2])
         return np.concatenate((x, t), axis=1)
 
-    def f(self, X):
-        return tf.zeros_like(X)
+    def f(self, x):
+        return tf.zeros_like(x)
 
     def model_r(self, XZ_f):
         x_f = XZ_f[:, 0:1]
@@ -200,13 +201,14 @@ x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f, ub, lb = \
         prep_data(path, hp["N_i"], hp["N_b"], hp["N_f"], noise=0.0)
 
 # Creating the model
-logger = Logger(frequency=10, hp=hp)
+logger = Logger(frequency=100, hp=hp)
 pinn = BurgersInformedNN(hp, logger, X_f, ub, lb)
 
 # Defining the error function for the logger
 
 
 def error():
+    return 0.0
     U_pred, _ = pinn.predict(X_star, X, T)
     return np.linalg.norm(Exact_u-U_pred, 2)/np.linalg.norm(Exact_u, 2)
 

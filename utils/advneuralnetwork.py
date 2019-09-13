@@ -136,11 +136,11 @@ class AdvNeuralNetwork(object):
         return tf.convert_to_tensor(X, dtype=self.dtype)
 
     # Generate samples of y given x by sampling from the latent space z
-    def sample_generator(self, X_u, Z_u):
+    def sample_generator(self, X, Z):
         # Prior:
-        z_prior = Z_u
+        z_prior = Z
         # Decoder: p(y|x,z)
-        Y_pred = self.model_p(tf.concat([X_u, z_prior], axis=1))
+        Y_pred = self.model_p(tf.concat([X, z_prior], axis=1))
         return Y_pred
 
     # Predict y given x
@@ -148,5 +148,4 @@ class AdvNeuralNetwork(object):
         X_star = self.tensor(self.normalize(X_star))
         Z = np.random.randn(X_star.shape[0], 1)
         Y_star = self.sample_generator(X_star, Z)
-        Y_star = Y_star
         return Y_star
