@@ -195,7 +195,7 @@ x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f, ub, lb = prep_data
     path, hp["N_i"], hp["N_b"], hp["N_f"], noise=0.0)
 
 # Creating the model
-logger = Logger(frequency=10, hp=hp)
+logger = Logger(frequency=100, hp=hp)
 pinn = BurgersInformedNN(hp, logger, X_f, ub, lb)
 
 # Defining the error function for the logger
