@@ -1,10 +1,5 @@
-from custom_lbfgs import lbfgs, Struct
 import numpy as np
 import tensorflow as tf
-import sys
-import json
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
 class AdvNeuralNetwork(object):
@@ -137,6 +132,9 @@ class AdvNeuralNetwork(object):
     def normalize(self, X):
         raise NotImplementedError()
 
+    def tensor(self, X):
+        return tf.convert_to_tensor(X, dtype=self.dtype)
+
     # Generate samples of y given x by sampling from the latent space z
     def sample_generator(self, X_u, Z_u):
         # Prior:
@@ -147,7 +145,7 @@ class AdvNeuralNetwork(object):
 
     # Predict y given x
     def generate_sample(self, X_star):
-        X_star = tf.convert_to_tensor(self.normalize(X_star), dtype=self.dtype)
+        X_star = self.tensor(self.normalize(X_star))
         Z = np.random.randn(X_star.shape[0], 1)
         Y_star = self.sample_generator(X_star, Z)
         Y_star = Y_star
