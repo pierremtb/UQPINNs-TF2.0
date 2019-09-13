@@ -92,9 +92,8 @@ def prep_data(path, N_i, N_b, N_f, noise=0.0, noise_is_gaussian=True):
     plt.xlim(-1.0, 1.0)
     plt.xlabel("$x$", fontsize=11)
     plt.ylabel("$u(0, x)$", fontsize=11)
-    # plt.savefig("./Initial.png", dpi=600)
-    plt.show()
-    exit(0)
+    savefig(f"init-" + datetime.now().strftime('%Y%m%d-%H%M%S'))
+    
     return x, t, X, T, Exact_u, X_star, u_star, \
         X_u_train, u_train, X_f_train, ub, lb
 

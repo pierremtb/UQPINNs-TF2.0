@@ -19,7 +19,7 @@ from burgersutil import prep_data, plot_inf_cont_results
 from advneuralnetwork import AdvNeuralNetwork
 
 # %% HYPER PARAMETERS
-
+# plt.savefig("./Initial.png", dpi=600)
 if len(sys.argv) > 1:
     # if False:
     with open(sys.argv[1]) as hpFile:
@@ -200,7 +200,8 @@ class BurgersInformedNN(AdvNeuralNetwork):
 
 # Getting the data
 path = os.path.join(eqnPath, "data", "burgers_shock.mat")
-x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f, ub, lb = \
+x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, \
+X_f, ub, lb = \
         prep_data(path, hp["N_i"], hp["N_b"], hp["N_f"],
         noise=hp["noise"], noise_is_gaussian=hp["noise_is_gaussian"])
 
@@ -233,4 +234,4 @@ print("Error on u: ", error_u)
 # %% PLOTTING
 plot_inf_cont_results(X_star, U_pred, Sigma_pred,
                       X_u_train, u_train, Exact_u, X, T, x, t,
-                      save_path=eqnPath, save_hp=hp)
+                      save_path=eqnPath, save_hp=hp, inifig=inifig)
