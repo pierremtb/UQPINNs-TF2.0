@@ -56,8 +56,8 @@ else:
     hp["lambda"] = 1.5
     hp["beta"] = 1.0
     # MinMax switching
-    hp["k1"] = 1
-    hp["k2"] = 5
+    hp["k1"] = 5
+    hp["k2"] = 1
     # Batch size
     hp["batch_size_u"] = hp["N_i"] + hp["N_b"]
     hp["batch_size_f"] = hp["N_f"]
