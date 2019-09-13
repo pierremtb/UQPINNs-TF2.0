@@ -60,8 +60,6 @@ def prep_data(path, N_i, N_b, N_f, noise=0.0, noise_is_gaussian=True):
         error = 1.0/np.exp(3.0*(abs(x_i))) * \
             np.random.normal(0, noise, x_i.size)[:, None]
         u_i = -np.sin(np.pi*(x_i + 2*error)) + error
-        print(x_i.shape)
-        print(u_i.shape)
     # Getting the lowest boundary conditions (x=-1) 
     X_bl = np.hstack((X[:, 0:1], T[:, 0:1]))
     u_bl = Exact_u[:, 0:1]
