@@ -52,7 +52,7 @@ else:
     hp["tf_lr"] = 0.0001
     hp["tf_b1"] = 0.9
     hp["tf_eps"] = None
-    # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel it)
+    # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel)
     # hp["nt_epochs"] = 500
     # hp["nt_lr"] = 1.0
     # hp["nt_ncorr"] = 50
@@ -65,6 +65,9 @@ else:
     # Batch size
     hp["batch_size_u"] = hp["N_i"] + hp["N_b"]
     hp["batch_size_f"] = hp["N_f"]
+    # Noise on initial data
+    hp["noise"] = 0.1
+    hp["noise_is_gaussian"] = False
 
 # %% DEFINING THE MODEL
 
@@ -198,7 +201,8 @@ class BurgersInformedNN(AdvNeuralNetwork):
 # Getting the data
 path = os.path.join(eqnPath, "data", "burgers_shock.mat")
 x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, X_f, ub, lb = \
-        prep_data(path, hp["N_i"], hp["N_b"], hp["N_f"], noise=0.0)
+        prep_data(path, hp["N_i"], hp["N_b"], hp["N_f"],
+        noise=hp["noise"], noise_is_gaussian=hp["noise_is_gaussian"])
 
 # Creating the model
 logger = Logger(frequency=100, hp=hp)
