@@ -201,9 +201,9 @@ class BurgersInformedNN(AdvNeuralNetwork):
 # Getting the data
 path = os.path.join(eqnPath, "data", "burgers_shock.mat")
 x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, \
-X_f, ub, lb = \
-        prep_data(path, hp["N_i"], hp["N_b"], hp["N_f"],
-        noise=hp["noise"], noise_is_gaussian=hp["noise_is_gaussian"])
+    X_f, ub, lb = prep_data(path, hp["N_i"], hp["N_b"], hp["N_f"],
+                            noise=hp["noise"],
+                            noise_is_gaussian=hp["noise_is_gaussian"])
 
 # Creating the model
 logger = Logger(frequency=100, hp=hp)
@@ -234,4 +234,4 @@ print("Error on u: ", error_u)
 # %% PLOTTING
 plot_inf_cont_results(X_star, U_pred, Sigma_pred,
                       X_u_train, u_train, Exact_u, X, T, x, t,
-                      save_path=eqnPath, save_hp=hp, inifig=inifig)
+                      save_path=eqnPath, save_hp=hp)

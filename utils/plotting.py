@@ -5,10 +5,12 @@ import sys
 import os
 import json
 
+
 def saveResultDir(save_path, save_hp):
     now = datetime.now()
-    scriptName =  os.path.splitext(os.path.basename(sys.argv[0]))[0]
-    resDir = os.path.join(save_path, "results", f"{now.strftime('%Y%m%d-%H%M%S')}-{scriptName}")
+    scriptName = os.path.splitext(os.path.basename(sys.argv[0]))[0]
+    resDir = os.path.join(save_path, "results",
+                f"{now.strftime('%Y%m%d-%H%M%S')}-{scriptName}")
     os.mkdir(resDir)
     print("Saving results to directory ", resDir)
     savefig(os.path.join(resDir, "graph"))
@@ -17,9 +19,9 @@ def saveResultDir(save_path, save_hp):
 
 
 # MIT License
-# 
+#
 # Copyright (c) 2018 maziarraissi
-# 
+#
 # https://github.com/maziarraissi/PINNs
 
 def figsize(scale, nplots = 1):
@@ -71,22 +73,3 @@ def savefig(filename, crop = True):
         # plt.savefig('{}.eps'.format(filename))
         plt.savefig('{}.png'.format(filename))
 
-## Simple plot
-#fig, ax  = newfig(1.0)
-#
-#def ema(y, a):
-#    s = []
-#    s.append(y[0])
-#    for t in range(1, len(y)):
-#        s.append(a * y[t] + (1-a) * s[t-1])
-#    return np.array(s)
-#    
-#y = [0]*200
-#y.extend([20]*(1000-len(y)))
-#s = ema(y, 0.01)
-#
-#ax.plot(s)
-#ax.set_xlabel('X Label')
-#ax.set_ylabel('EMA')
-#
-#savefig('ema')
