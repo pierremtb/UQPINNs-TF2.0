@@ -5,6 +5,9 @@ import tensorflow as tf
 class AdvNeuralNetwork(object):
     def __init__(self, hp, logger, ub, lb):
 
+        self.ub = ub
+        self.lb = lb
+
         # Setting up the optimizers with the previously defined hp
         self.epochs = hp["tf_epochs"]
         self.optimizer_KL = tf.keras.optimizers.Adam(
