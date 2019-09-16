@@ -39,13 +39,13 @@ else:
     hp["Z_dim"] = 1
     # DeepNNs topologies
     hp["layers_P"] = [hp["X_dim"]+hp["T_dim"] + hp["Z_dim"],
-                      100, 100, 100, 100,
+                      50, 50, 50, 50,
                       hp["Y_dim"]]
     hp["layers_Q"] = [hp["X_dim"]+hp["T_dim"] + hp["Y_dim"],
-                      100, 100, 100, 100,
+                      50, 50, 50, 50,
                       hp["Z_dim"]]
     hp["layers_T"] = [hp["X_dim"]+hp["T_dim"]+hp["Y_dim"],
-                      100, 100, 100, 100,
+                      50, 50, 50,
                       1]
     # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
     hp["tf_epochs"] = 10000
@@ -66,7 +66,7 @@ else:
     hp["batch_size_u"] = hp["N_i"] + hp["N_b"]
     hp["batch_size_f"] = hp["N_f"]
     # Noise on initial data
-    hp["noise"] = 0.1
+    hp["noise"] = 0.0
     hp["noise_is_gaussian"] = False
 
 # %% DEFINING THE MODEL
