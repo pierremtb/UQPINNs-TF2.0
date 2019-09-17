@@ -11,11 +11,11 @@ tf.random.set_seed(1234)
 
 # %% LOCAL IMPORTS
 
-eqnPath = "1d-burgers"
+eqnPath = "2d-darcy"
 sys.path.append(eqnPath)
 sys.path.append("utils")
 from logger import Logger
-from burgersutil import prep_data, plot_inf_cont_results
+from darcysutil import prep_data, plot_inf_cont_results
 from advneuralnetwork import AdvNeuralNetwork
 
 # %% HYPER PARAMETERS
@@ -32,9 +32,9 @@ else:
     # Collocation points on the domain
     hp["N_f"] = 10000
     # Dimension of input, output and latent variable
-    hp["X_dim"] = 1
+    hp["X_dim"] = 2
     hp["Y_dim"] = 1
-    hp["T_dim"] = 1
+    hp["T_dim"] = 0
     hp["Z_dim"] = 2
     # DeepNNs topologies
     hp["layers_P"] = [hp["X_dim"]+hp["T_dim"] + hp["Z_dim"],
@@ -51,7 +51,7 @@ else:
                         50, 50, 50, 50,
                         hp["Y_dim"]]
     # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
-    hp["tf_epochs"] = 10000
+    hp["tf_epochs"] = 100
     hp["tf_lr"] = 0.0001
     hp["tf_b1"] = 0.9
     hp["tf_eps"] = None
@@ -66,7 +66,7 @@ else:
     hp["k1"] = 1
     hp["k2"] = 5
     # Batch size
-    hp["batch_size_u"] = hp["N_i"] + hp["N_b"]
+    hp["batch_size_u"] = hp["N_u"]
     hp["batch_size_f"] = hp["N_f"]
     # Domain size
     hp["L_1"] = 10.
@@ -83,7 +83,7 @@ else:
 
 
 class BurgersInformedNN(AdvNeuralNetwork):
-    def __init__(self, hp, logger, X_f, X_b,  ub, lb):
+    def __init__(self, hp, logger, X_f, X_b, ub, lb):
         super().__init__(hp, logger, ub, lb)
 
         # Normalizing (TODO: find out why we do this (lbb, ubb) thing)
@@ -111,7 +111,11 @@ class BurgersInformedNN(AdvNeuralNetwork):
         self.q = hp["q"]
         self.ksat = hp["ksat"]
 
-        # Additional DNN model for u -> K(u)
+        # The default models are:
+        # model_p(X, z)
+        # model_q(X, u)
+        # model_t(X, u)
+        # Additional DNN model for u -> K(u): model_p_K(u)
         self.model_p_K = self.declare_model(hp["layers_P_k"])
 
     # Normalization functions adapted to our case
@@ -125,77 +129,78 @@ class BurgersInformedNN(AdvNeuralNetwork):
     def f(self, x):
         return tf.zeros_like(x)
 
+    def model_p_grad_x(self, XZ):
+        with tf.GradientTape() as tape:
+            u = self.model_p(XZ)
 
     # Boundary helpers TODO: finish
-    def get_b1(self, X1, X2, Z):   
-        z_prior = Z       
-        u = self.model_p(tf.concat([X1, X2, z_prior], axis=1))
-        u_x1 = tf.gradients(u, X1)[0]
-        k = self.net_P_k(u)
+    def model_b1(self, XZ):   
+        x1 = XZ[:, 0:1]
+        x2 = XZ[:, 1:self.X_dim]
+        z = XZ[:, self.X_dim:self.X_dim+self.Z_dim]
+        with tf.GradientTape() as tape:
+            tape.watch(x1)
+            XZtemp = tf.concat([x1, x2, z], axis=1)
+            u = self.model_p(XZtemp)
+        u_x1 = tape.gradient(u, x1)
+        k = self.model_p_K(u)
         temp = self.q + k * u_x1
         return temp
-
-    def get_b2(self, X1, X2, Z):   
-        z_prior = Z       
-        u = self.net_P_u(X1, X2, z_prior)
-        u_x2 = tf.gradients(u, X2)[0]
+    
+    def model_b2(self, XZ):   
+        x1 = XZ[:, 0:1]
+        x2 = XZ[:, 1:2]
+        z = XZ[:, self.X_dim:self.X_dim+self.Z_dim]
+        with tf.GradientTape() as tape:
+            tape.watch(x2)
+            XZtemp = tf.concat([x1, x2, z], axis=1)
+            u = self.model_p(XZtemp)
+        u_x2 = tape.gradient(u, x2)
         return u_x2
 
-    def get_b3(self, X1, X2, Z):   
-        z_prior = Z       
-        u = self.net_P_u(X1, X2, z_prior)
+    def model_b3(self, XZ):   
+        u = self.model_p(XZ)
         temp = u - self.u_0
         return temp
 
-    def get_b4(self, X1, X2, Z):   
-        z_prior = Z       
-        u = self.net_P_u(X1, X2, z_prior)
-        u_x2 = tf.gradients(u, X2)[0]
+    def model_b4(self, XZ):   
+        x1 = XZ[:, 0:1]
+        x2 = XZ[:, 1:2]
+        z = XZ[:, self.X_dim:self.X_dim+self.Z_dim]
+        with tf.GradientTape() as tape:
+            tape.watch(x2)
+            XZtemp = tf.concat([x1, x2, z], axis=1)
+            u = self.model_p(XZtemp)
+        u_x2 = tape.gradient(u, x2)
         return u_x2
 
-    # TODO: the f thing
-    def model_f(self, X1, X2, Z_u):
-        u = self.net_P_u(X1, X2, Z_u)
-        k = self.net_P_k(u)
-        u_x1 = tf.gradients(u, X1)[0]
-        u_x2 = tf.gradients(u, X2)[0]
-        f_1 = tf.gradients(k*u_x1, X1)[0]
-        f_2 = tf.gradients(k*u_x2, X2)[0]
-        f = f_1 + f_2
-        return f
-
-    # TODO: remove this old (keeping as ex for model_f)
     def model_r(self, XZ_f):
-        x_f = XZ_f[:, 0:1]
-        t_f = XZ_f[:, 1:2]
-        z_prior = XZ_f[:, 2:3]
+        x1_f = XZ_f[:, 0:1]
+        x2_f = XZ_f[:, 1:2]
+        z_prior = XZ_f[:, self.X_dim:self.X_dim+self.Z_dim]
         with tf.GradientTape(persistent=True) as tape:
-            tape.watch(x_f)
-            tape.watch(t_f)
-            X = tf.concat([x_f, t_f], axis=1)
+            tape.watch(x1_f)
+            tape.watch(x2_f)
+            X = tf.concat([x1_f, x2_f], axis=1)
             u = self.model_p(tf.concat([X, z_prior], axis=1))
-            u_x = tape.gradient(u, x_f)
-        u_t = tape.gradient(u, t_f)
-        u_xx = tape.gradient(u_x, x_f)
+            u_x1 = tape.gradient(u, x1_f)
+            u_x2 = tape.gradient(u, x2_f)
+            K = self.model_p_K(u)
+            Ku_x1 = K*u_x1
+            Ku_x2 = K*u_x2
+        f_1 = tape.gradient(Ku_x1, x1_f)
+        f_2 = tape.gradient(Ku_x2, x2_f)
         del tape
-        f = self.f(x_f)
-        r = (self.Jacobian_T) * u_t + \
-            (self.Jacobian_X) * u * u_x - \
-            (0.01/np.pi) * (self.Jacobian_X ** 2) * u_xx - f
-        return r
+        return f_1 + f_2
 
-    # TODO: override the losses (and maybe grads)
-
-    # Fetches a mini-batch of data
-    def fetch_minibatch(self, X_u, u, X_f):
-        N_u = X_u.shape[0]
-        N_f = X_f.shape[0]
-        idx_u = np.random.choice(N_u, self.batch_size_u, replace=False)
-        idx_f = np.random.choice(N_f, self.batch_size_f, replace=False)
-        X_u_batch = self.tensor(X_u[idx_u, :])
-        X_f_batch = self.tensor(X_f[idx_f, :])
-        u_batch = self.tensor(u[idx_u, :])
-        return X_u_batch, u_batch, X_f_batch
+    def physics_informed_loss(self, f_pred):
+        b1_pred = self.model_b1(tf.concat([self.x1_b1, self.x2_b1, self.z_b1], axis=1))
+        b2_pred = self.model_b2(tf.concat([self.x1_b2, self.x2_b2, self.z_b2], axis=1))
+        b3_pred = self.model_b3(tf.concat([self.x1_b3, self.x2_b3, self.z_b3], axis=1))
+        b4_pred = self.model_b4(tf.concat([self.x1_b4, self.x2_b4, self.z_b4], axis=1))
+        return tf.reduce_mean(tf.square(f_pred)) + \
+               tf.reduce_mean(tf.square(b1_pred)) + tf.reduce_mean(tf.square(b2_pred)) + \
+               tf.reduce_mean(tf.square(b3_pred)) + tf.reduce_mean(tf.square(b4_pred))
 
     # The training function
     def fit(self, X_u, u):
@@ -203,25 +208,37 @@ class BurgersInformedNN(AdvNeuralNetwork):
 
         # Creating the tensors
         X_u = self.normalize(X_u)
-        X_f = tf.concat([self.x_f, self.t_f], axis=1).numpy()
+        X_f = tf.concat([self.x1_f, self.x2_f], axis=1).numpy()
+
+        x1_u = X_u[:, 0:1]
+        x2_u = X_u[:, 1:2]
 
         self.logger.log_train_opt("Adam")
         for epoch in range(self.epochs):
             X_u_batch, u_batch, X_f_batch = self.fetch_minibatch(X_u, u, X_f)
 
-            Z_u = np.random.randn(self.batch_size_u, 1)
-            Z_f = np.random.randn(self.batch_size_f, 1)
+            # Sampling from latent spaces
+            # z_u = np.random.randn(x1_u.shape[0], self.Z_dim)
+            # z_f = np.random.randn(self.x1_f.shape[0], self.Z_dim)
+            
+            z_u = np.random.randn(self.batch_size_u, self.Z_dim)
+            z_f = np.random.randn(self.batch_size_f, self.Z_dim)
+
+            self.z_b1 = np.random.randn(self.x1_b1.shape[0], self.Z_dim)
+            self.z_b2 = np.random.randn(self.x1_b2.shape[0], self.Z_dim)
+            self.z_b3 = np.random.randn(self.x1_b3.shape[0], self.Z_dim)
+            self.z_b4 = np.random.randn(self.x1_b4.shape[0], self.Z_dim)
 
             # Dual-Optimization step
             for _ in range(self.k1):
                 loss_T, grads = \
-                    self.discriminator_grad(X_u_batch, u_batch, Z_u)
+                    self.discriminator_grad(X_u_batch, u_batch, z_u)
                 self.optimizer_T.apply_gradients(
                     zip(grads, self.wrap_discriminator_variables()))
             for _ in range(self.k2):
                 loss_G, loss_KL, loss_recon, loss_PDE, grads = \
                     self.generator_grad(X_u_batch, u_batch,
-                                        X_f_batch, Z_u, Z_f)
+                                        X_f_batch, z_u, z_f)
                 self.optimizer_KL.apply_gradients(
                     zip(grads, self.wrap_generator_variables()))
 
@@ -233,46 +250,35 @@ class BurgersInformedNN(AdvNeuralNetwork):
 
         self.logger.log_train_end(self.epochs)
 
-    # TODO: update the predictions
+    def predict_k(self, X_star): 
+        u_star = self.predict(X_star)
+        k_star = self.model_p_K(u_star)
+        return k_star / self.ksat
     
-    def predict_f(self, X_star):
-        # Center around the origin
-        X_star_norm = self.tensor(self.normalize(X_star))
-        # Predict
-        z_f = self.tensor(np.random.randn(X_star.shape[0], self.Z_dim))
-        f_star = self.model_r(tf.concat([X_star_norm, z_f], axis=1))
+    def predict(self, X_star): 
+        X_star = self.normalize(X_star)
+        z = np.random.randn(X_star.shape[0], self.Z_dim)       
+        u_star = self.model_p(tf.concat([X_star, z], axis=1)) 
+        return u_star
+    
+    def predict_f(self, X_star): 
+        X_star = self.normalize(X_star)
+        z = np.random.randn(X_star.shape[0], self.Z_dim)       
+        f_star = self.model_r(tf.concat([X_star, z], axis=1)) 
         return f_star
-
-    def predict(self, X_star, X, T):
-        N_samples = 500
-        samples_mean = np.zeros((X_star.shape[0], N_samples))
-        for i in range(0, N_samples):
-            samples_mean[:, i:i+1] = self.generate_sample(X_star)
-
-        XT = np.hstack((X.flatten()[:, None], T.flatten()[:, None]))
-
-        # Compare mean and variance of the predicted samples
-        # as prediction and uncertainty
-        U_pred = np.mean(samples_mean, axis=1)
-        U_pred = griddata(XT, U_pred.flatten(), (X, T), method='cubic')
-        Sigma_pred = np.var(samples_mean, axis=1)
-        Sigma_pred = griddata(XT, Sigma_pred.flatten(), (X, T), method='cubic')
-
-        return U_pred, Sigma_pred
-
-
+    
 # %% TRAINING THE MODEL
 
 # Getting the data
 path = os.path.join(eqnPath, "data", "nonlinear2d_data.npz")
 X_star, Exact_u, Exact_k, X_u_train, u_train, \
-    X_f, ub, lb = prep_data(path, hp["N_u"], hp["N_b"], hp["N_f"],
+    X_f, X_b, ub, lb = prep_data(path, hp["N_u"], hp["N_b"], hp["N_f"],
                             hp["L_1"], hp["L_2"],
                             noise=hp["noise"])
 
 # Creating the model
-logger = Logger(frequency=100, hp=hp)
-pinn = BurgersInformedNN(hp, logger, X_f, ub, lb)
+logger = Logger(frequency=10, hp=hp)
+pinn = BurgersInformedNN(hp, logger, X_f, X_b, ub, lb)
 
 # Defining the error function for the logger
 def error():
@@ -288,7 +294,7 @@ uuu = np.zeros((X_star.shape[0], N_samples))
 fff = np.zeros((X_star.shape[0], N_samples))
 for i in range(0, N_samples):
     kkk[:, i:i+1] = pinn.predict_k(X_star)
-    uuu[:, i:i+1] = pinn.predict_u(X_star)
+    uuu[:, i:i+1] = pinn.predict(X_star)
     fff[:, i:i+1] = pinn.predict_f(X_star)
 
 # %% PLOTTING

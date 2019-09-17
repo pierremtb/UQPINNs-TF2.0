@@ -149,6 +149,9 @@ class BurgersInformedNN(AdvNeuralNetwork):
             Z_u = np.random.randn(self.batch_size_u, 1)
             Z_f = np.random.randn(self.batch_size_f, 1)
 
+            def physics_informed_loss(f_pred):
+                return tf.reduce_mean(tf.square(f_pred))
+
             # Dual-Optimization step
             for _ in range(self.k1):
                 loss_T, grads = \
@@ -158,7 +161,8 @@ class BurgersInformedNN(AdvNeuralNetwork):
             for _ in range(self.k2):
                 loss_G, loss_KL, loss_recon, loss_PDE, grads = \
                     self.generator_grad(X_u_batch, u_batch,
-                                        X_f_batch, Z_u, Z_f)
+                                        X_f_batch, Z_u, Z_f,
+                                        physics_informed_loss)
                 self.optimizer_KL.apply_gradients(
                     zip(grads, self.wrap_generator_variables()))
 

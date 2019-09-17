@@ -35,7 +35,7 @@ def prep_data(path, N_u, N_b, N_f, L_1, L_2, noise=0.0):
 
     # X is x 1, k is 10000 x 1, u is 10000 x 1
     X = data["X"]
-    k = data["K"]
+    k = data["k"]
     u = data["u"]
 
     # Boundary points
@@ -58,7 +58,7 @@ def prep_data(path, N_u, N_b, N_f, L_1, L_2, noise=0.0):
     # Collocation points
     X1_f = L_1 * np.random.random(N_f)[:, None]
     X2_f = L_2 * np.random.random(N_f)[:, None]
-    X_f_train = np.hstack((X1_f, X2_f))
+    X_f = np.hstack((X1_f, X2_f))
    
     # Getting the training data
     # idx_u = np.random.choice(u.shape[0], N_u, replace=False)
@@ -76,7 +76,7 @@ def prep_data(path, N_u, N_b, N_f, L_1, L_2, noise=0.0):
     Exact_u = u
     Exact_k = k
 
-    return X, Exact_u, Exact_k, X_u_train, u_train, X_f_train, ub, lb
+    return X, Exact_u, Exact_k, X_u_train, u_train, X_f, X_b, ub, lb
 
 def plot_inf_cont_results(X_star, u_star, k_star, kkk, uuu, fff, ub, lb, save_path=None, save_hp=None):
 

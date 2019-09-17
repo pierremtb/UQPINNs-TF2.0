@@ -19,7 +19,9 @@ class AdvNeuralNetwork(object):
             beta_1=hp["tf_b1"],
             epsilon=hp["tf_eps"])
 
+        self.dtype = "float64"
         # Descriptive Keras models
+        tf.keras.backend.set_floatx(self.dtype)
         self.model_p = self.declare_model(hp["layers_P"])
         self.model_q = self.declare_model(hp["layers_Q"])
         self.model_t = self.declare_model(hp["layers_T"])
@@ -37,7 +39,7 @@ class AdvNeuralNetwork(object):
         self.batch_size_f = hp["batch_size_f"]
 
         self.logger = logger
-        self.dtype = tf.float32
+        #self.dtype = tf.float64
 
     def declare_model(self, layers):
         model = tf.keras.Sequential()
@@ -48,14 +50,15 @@ class AdvNeuralNetwork(object):
                 kernel_initializer="glorot_normal"))
         return model
 
+    def physics_informed_loss(self, f_pred):
+        return tf.reduce_mean(tf.squae(f_pred))
+
     # Mininizing the G-Loss
-    def generator_loss(self, X_u, u, u_pred, X_f, f_pred, Z_u, Z_f):
+    def generator_loss(self, X_u, u, u_pred, f_pred, Z_u):
         # Prior:
         z_u_prior = Z_u
-        # z_f_prior = Z_f
         # Encoder: q(z|x,y)
         z_u_encoder = self.model_q(tf.concat([X_u, u_pred], axis=1))
-        # z_f_encoder = self.model_q(tf.concat([X_f, f_pred], axis=1))
 
         # Discriminator loss
         Y_pred = self.model_p(tf.concat([X_u, Z_u], axis=1))
@@ -68,7 +71,7 @@ class AdvNeuralNetwork(object):
         log_q = - tf.reduce_mean(tf.square(z_u_prior - z_u_encoder))
 
         # Physics-informed loss
-        loss_f = tf.reduce_mean(tf.square(f_pred))
+        loss_f = self.physics_informed_loss(f_pred)
 
         # Generator loss
         loss = KL + (1.0 - self.kl_lambda)*log_q + self.kl_beta * loss_f
@@ -99,7 +102,7 @@ class AdvNeuralNetwork(object):
             u_pred = self.model_p(tf.concat([X_u, Z_u], axis=1))
             f_pred = self.model_r(tf.concat([X_f, Z_f], axis=1))
             loss_G, KL, recon, loss_PDE = \
-                self.generator_loss(X_u, u, u_pred, X_f, f_pred, Z_u, Z_f)
+                self.generator_loss(X_u, u, u_pred, f_pred, Z_u)
         grads = tape.gradient(loss_G, self.wrap_generator_variables())
         del tape
         return loss_G, KL, recon, loss_PDE, grads
@@ -137,6 +140,17 @@ class AdvNeuralNetwork(object):
 
     def tensor(self, X):
         return tf.convert_to_tensor(X, dtype=self.dtype)
+
+    # Fetches a mini-batch of data
+    def fetch_minibatch(self, X_u, u, X_f):
+        N_u = X_u.shape[0]
+        N_f = X_f.shape[0]
+        idx_u = np.random.choice(N_u, self.batch_size_u, replace=False)
+        idx_f = np.random.choice(N_f, self.batch_size_f, replace=False)
+        X_u_batch = self.tensor(X_u[idx_u, :])
+        X_f_batch = self.tensor(X_f[idx_f, :])
+        u_batch = self.tensor(u[idx_u, :])
+        return X_u_batch, u_batch, X_f_batch
 
     # Generate samples of y given x by sampling from the latent space z
     def sample_generator(self, X, Z):
