@@ -11,7 +11,7 @@ tf.random.set_seed(1234)
 
 # %% LOCAL IMPORTS
 
-eqnPath = "2d-darcy"
+eqnPath = "2d-darcys"
 sys.path.append(eqnPath)
 sys.path.append("utils")
 from logger import Logger
