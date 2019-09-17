@@ -101,7 +101,7 @@ def plot_inf_cont_results(X_star, u_star, k_star, kkk, uuu, fff, ub, lb, save_pa
     U_Sigma_plot = griddata(X_star, uuu_Sigma_pred.flatten(), (XX, YY), method="cubic")
     F_Sigma_plot = griddata(X_star, fff_Sigma_pred.flatten(), (XX, YY), method="cubic")
 
-    fig = plt.figure(2, figsize=(12, 12))
+    fig1 = plt.figure(2, figsize=(12, 12))
     plt.subplot(2, 2, 1)
     plt.xticks(fontsize=15)
     plt.yticks(fontsize=15)
@@ -137,10 +137,9 @@ def plot_inf_cont_results(X_star, u_star, k_star, kkk, uuu, fff, ub, lb, save_pa
     plt.xlabel("$x_1$", fontsize=15)
     plt.ylabel("$x_2$", fontsize=15)  
     plt.title("Relative error of $k(x_1,x_2)$", fontsize=15)
-    plt.savefig("./reconstruction.png", dpi=600)
 
-    u = np.load("uuu0.npy")
-    k = np.load("kkk0.npy")
+    u = uuu
+    k = kkk
     u_mu = np.mean(u, axis=1)
     u = np.zeros((10000, 500))
     for i in range(500):
@@ -156,7 +155,7 @@ def plot_inf_cont_results(X_star, u_star, k_star, kkk, uuu, fff, ub, lb, save_pa
     u = np.linspace(-10., -4.,  1000)
     k = k_vanGenuchten(u)
 
-    plt.figure(10,  figsize=(6, 4))
+    fig2 = plt.figure(10,  figsize=(6, 4))
     plt.xticks(fontsize=11)
     plt.yticks(fontsize=11)   
     plt.plot(u_p, k_p, "bo") 
@@ -164,12 +163,12 @@ def plot_inf_cont_results(X_star, u_star, k_star, kkk, uuu, fff, ub, lb, save_pa
     ax = plt.gca()
     plt.xlabel("$u$", fontsize=11)
     plt.ylabel("$K(u)$", fontsize=11)
-    plt.savefig("./UK.png", dpi=600)
         
 
-    # if save_path != None and save_hp != None:
-    #    saveResultDir(save_path, save_hp)
+    if save_path != None and save_hp != None:
+       saveResultDir(save_path, save_hp, figs=[fig1, fig2])
 
-    # else:
-     #   plt.show()
+    else:
+       fig1.show()
+       fig2.show()
 

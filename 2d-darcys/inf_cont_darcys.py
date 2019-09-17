@@ -288,6 +288,8 @@ logger.set_error_fn(error)
 # Training the PINN
 pinn.fit(X_u_train, u_train)
 
+# Predicting
+print("Making the predictions…")
 N_samples = 500
 kkk = np.zeros((X_star.shape[0], N_samples))
 uuu = np.zeros((X_star.shape[0], N_samples))
@@ -298,5 +300,6 @@ for i in range(0, N_samples):
     fff[:, i:i+1] = pinn.predict_f(X_star)
 
 # %% PLOTTING
+print("Plotting")
 plot_inf_cont_results(X_star, Exact_u.T, Exact_k.T, kkk, uuu, fff, ub, lb,
                       save_path=eqnPath, save_hp=hp)

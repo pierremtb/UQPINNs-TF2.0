@@ -6,14 +6,20 @@ import os
 import json
 
 
-def saveResultDir(save_path, save_hp):
+def saveResultDir(save_path, save_hp, figs=[]):
     now = datetime.now()
     scriptName = os.path.splitext(os.path.basename(sys.argv[0]))[0]
     resDir = os.path.join(save_path, "results",
-                f"{now.strftime('%Y%m%d-%H%M%S')}-{scriptName}")
+                          f"{now.strftime('%Y%m%d-%H%M%S')}-{scriptName}")
     os.mkdir(resDir)
     print("Saving results to directory ", resDir)
-    savefig(os.path.join(resDir, "graph"))
+    if len(figs) == 0:
+        savefig(os.path.join(resDir, "graph"))
+    else:
+        for i, fig in enumerate(figs):
+            path = os.path.join(resDir, f"fig{i}")
+            fig.savefig(path + ".pdf", bbox_inches='tight', pad_inches=0)
+            fig.savefig(path + ".png", bbox_inches='tight', pad_inches=0)
     with open(os.path.join(resDir, "hp.json"), "w") as f:
         json.dump(save_hp, f)
 
@@ -72,4 +78,3 @@ def savefig(filename, crop = True):
         plt.savefig('{}.pdf'.format(filename))
         # plt.savefig('{}.eps'.format(filename))
         plt.savefig('{}.png'.format(filename))
-
