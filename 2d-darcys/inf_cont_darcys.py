@@ -51,7 +51,7 @@ else:
                         50, 50, 50, 50,
                         hp["Y_dim"]]
     # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
-    hp["tf_epochs"] = 5000
+    hp["tf_epochs"] = 50
     hp["tf_lr"] = 0.0001
     hp["tf_b1"] = 0.9
     hp["tf_eps"] = None
@@ -78,6 +78,8 @@ else:
     hp["ksat"] = 10
     # Noise on initial data
     hp["noise"] = 0.0
+    # Frequency of training logs
+    hp["log_frequency"] = 10
 
 # %% DEFINING THE MODEL
 
@@ -270,7 +272,7 @@ X_star, Exact_u, Exact_k, X_u_train, u_train, \
                             noise=hp["noise"])
 
 # Creating the model
-logger = Logger(frequency=1, hp=hp)
+logger = Logger(frequency=hp["log_frequency"], hp=hp)
 pinn = BurgersInformedNN(hp, logger, X_f, X_b, ub, lb)
 
 # Defining the error function for the logger
