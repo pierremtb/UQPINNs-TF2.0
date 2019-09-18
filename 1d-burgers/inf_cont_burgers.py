@@ -68,6 +68,8 @@ else:
     # Noise on initial data
     hp["noise"] = 0.0
     hp["noise_is_gaussian"] = False
+    # Logging
+    hp["log_frequency"] = 100
 
 # %% DEFINING THE MODEL
 
@@ -169,7 +171,7 @@ class BurgersInformedNN(AdvNeuralNetwork):
         N_samples = 500
         samples_mean = np.zeros((X_star.shape[0], N_samples))
         for i in range(0, N_samples):
-            samples_mean[:, i:i+1] = self.generate_sample(X_star)
+            samples_mean[:, i:i+1] = self.predict_sample(X_star)
 
         XT = np.hstack((X.flatten()[:, None], T.flatten()[:, None]))
 

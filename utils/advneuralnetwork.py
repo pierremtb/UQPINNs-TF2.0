@@ -39,7 +39,6 @@ class AdvNeuralNetwork(object):
         self.batch_size_f = hp["batch_size_f"]
 
         self.logger = logger
-        #self.dtype = tf.float64
 
     def declare_model(self, layers):
         model = tf.keras.Sequential()
@@ -66,7 +65,7 @@ class AdvNeuralNetwork(object):
         T_pred = self.model_t(tf.concat([X_u, Y_pred], axis=1))
 
         # KL-divergence between the data and model distributions
-        KL = tf.reduce_mean(T_pred)
+        loss_KL = tf.reduce_mean(T_pred)
 
         # Entropic regularization
         log_q = -tf.reduce_mean(tf.square(z_u_prior - z_u_encoder))
@@ -75,9 +74,11 @@ class AdvNeuralNetwork(object):
         loss_f = self.physics_informed_loss(f_pred)
 
         # Generator loss
-        loss = KL + (1.0 - self.kl_lambda)*log_q + self.kl_beta * loss_f
+        loss_PDE = self.kl_beta * loss_f
+        loss_recon = (1.0 - self.kl_lambda)*log_q
+        loss_G = loss_KL + loss_recon + loss_PDE
 
-        return loss, KL, (1.0 - self.kl_lambda)*log_q, self.kl_beta * loss_f
+        return loss_G, loss_KL, loss_recon, loss_PDE
 
     # Minimizing the D-loss
     @tf.function
@@ -101,21 +102,19 @@ class AdvNeuralNetwork(object):
 
     @tf.function
     def generator_grad(self, X_u, u, X_f, Z_u, Z_f):
-        with tf.GradientTape(persistent=True) as tape:
+        with tf.GradientTape() as tape:
             u_pred = self.model_p(tf.concat([X_u, Z_u], axis=1))
             f_pred = self.model_r(tf.concat([X_f, Z_f], axis=1))
-            loss_G, KL, recon, loss_PDE = \
+            loss_G, loss_KL, loss_recon, loss_PDE = \
                 self.generator_loss(X_u, u, u_pred, f_pred, Z_u)
         grads = tape.gradient(loss_G, self.wrap_generator_variables())
-        del tape
-        return loss_G, KL, recon, loss_PDE, grads
+        return loss_G, loss_KL, loss_recon, loss_PDE, grads
 
     @tf.function
     def discriminator_grad(self, X_u, u, Z_u):
-        with tf.GradientTape(persistent=True) as tape:
+        with tf.GradientTape() as tape:
             loss_T = self.discriminator_loss(X_u, u, Z_u)
         grads = tape.gradient(loss_T, self.wrap_discriminator_variables())
-        del tape
         return loss_T, grads
 
     # right hand side terms of the PDE
@@ -177,17 +176,8 @@ class AdvNeuralNetwork(object):
                 zip(grads, self.wrap_generator_variables()))
         return loss_G, loss_KL, loss_recon, loss_PDE, loss_T
 
-    # Generate samples of y given x by sampling from the latent space z
-    def sample_generator(self, X, Z):
-        # Prior:
-        z_prior = Z
-        # Decoder: p(y|x,z)
-        Y_pred = self.model_p(tf.concat([X, z_prior], axis=1))
-        return Y_pred
-
-    # Predict y given x
-    def generate_sample(self, X_star):
+    def predict_sample(self, X_star):
         X_star = self.tensor(self.normalize(X_star))
-        Z = np.random.randn(X_star.shape[0], 1)
-        Y_star = self.sample_generator(X_star, Z)
-        return Y_star
+        Z = np.random.randn(X_star.shape[0], self.Z_dim)
+        u_star = self.model_p(tf.concat([X_star, Z], axis=1))
+        return u_star

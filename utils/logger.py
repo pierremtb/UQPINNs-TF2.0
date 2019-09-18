@@ -5,11 +5,10 @@ from datetime import datetime
 
 
 class Logger(object):
-    def __init__(self, frequency=10, hp=None):
-        if hp is not None:
-            print("Hyperparameters:")
-            print(json.dumps(hp, indent=2))
-            print()
+    def __init__(self, hp):
+        print("Hyperparameters:")
+        print(json.dumps(hp, indent=2))
+        print()
 
         print("TensorFlow version: {}".format(tf.__version__))
         print("Eager execution: {}".format(tf.executing_eagerly()))
@@ -17,7 +16,7 @@ class Logger(object):
 
         self.start_time = time.time()
         self.prev_time = self.start_time
-        self.frequency = frequency
+        self.frequency = hp["log_frequency"]
 
     def __get_epoch_duration(self):
         now = time.time()

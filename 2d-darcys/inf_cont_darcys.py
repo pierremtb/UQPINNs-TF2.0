@@ -79,12 +79,12 @@ else:
     # Noise on initial data
     hp["noise"] = 0.0
     # Frequency of training logs
-    hp["log_frequency"] = 10
+    hp["log_frequency"] = 1
 
 # %% DEFINING THE MODEL
 
 
-class BurgersInformedNN(AdvNeuralNetwork):
+class DarcysInformedNN(AdvNeuralNetwork):
     def __init__(self, hp, logger, X_f, X_b, ub, lb):
         super().__init__(hp, logger, ub, lb)
 
@@ -113,11 +113,9 @@ class BurgersInformedNN(AdvNeuralNetwork):
         self.q = hp["q"]
         self.ksat = hp["ksat"]
 
-        # The default models are:
-        # model_p(X, z)
-        # model_q(X, u)
-        # model_t(X, u)
-        # Additional DNN model for u -> K(u): model_p_K(u), with a transf at the end
+        # The default models are:model_p(X, z), model_q(X, u), model_t(X, u)
+        # Additional DNN model for u -> K(u): model_p_K(u),
+        # with a transf at the end
         self.model_p_K = self.declare_model(hp["layers_P_K"])
         self.model_p_K.add(tf.keras.layers.Lambda(
             lambda Y: self.ksat * tf.exp(Y)))
@@ -131,69 +129,65 @@ class BurgersInformedNN(AdvNeuralNetwork):
 
     # Boundary helpers
     @tf.function
-    def model_b1(self, XZ):   
+    def model_b1(self, XZ):
         x1 = XZ[:, 0:1]
         x2 = XZ[:, 1:self.X_dim]
         z = XZ[:, self.X_dim:self.X_dim+self.Z_dim]
-        with tf.GradientTape(persistent=True) as tape:
+        with tf.GradientTape() as tape:
             tape.watch(x1)
             XZtemp = tf.concat([x1, x2, z], axis=1)
             u = self.model_p(XZtemp)
         u_x1 = tape.gradient(u, x1)
-        del tape
         K = self.model_p_K(u)
         temp = self.q + K * u_x1
         return temp
-    
+
     @tf.function
-    def model_b2(self, XZ):   
+    def model_b2(self, XZ): 
         x1 = XZ[:, 0:1]
         x2 = XZ[:, 1:self.X_dim]
         z = XZ[:, self.X_dim:self.X_dim+self.Z_dim]
-        with tf.GradientTape(persistent=True) as tape:
+        with tf.GradientTape() as tape:
             tape.watch(x2)
             XZtemp = tf.concat([x1, x2, z], axis=1)
             u = self.model_p(XZtemp)
         u_x2 = tape.gradient(u, x2)
-        del tape
         return u_x2
 
     @tf.function
-    def model_b3(self, XZ):   
+    def model_b3(self, XZ): 
         u = self.model_p(XZ)
         temp = u - self.u_0
         return temp
 
     @tf.function
-    def model_b4(self, XZ):   
+    def model_b4(self, XZ):
         x1 = XZ[:, 0:1]
         x2 = XZ[:, 1:self.X_dim]
         z = XZ[:, self.X_dim:self.X_dim+self.Z_dim]
-        with tf.GradientTape(persistent=True) as tape:
+        with tf.GradientTape() as tape:
             tape.watch(x2)
             XZtemp = tf.concat([x1, x2, z], axis=1)
             u = self.model_p(XZtemp)
         u_x2 = tape.gradient(u, x2)
-        del tape
         return u_x2
 
     @tf.function
-    def model_r(self, XZ_f):
-        x1_f = XZ_f[:, 0:1]
-        x2_f = XZ_f[:, 1:self.X_dim]
-        z_prior = XZ_f[:, self.X_dim:self.X_dim+self.Z_dim]
+    def model_r(self, XZ):
+        x1 = XZ[:, 0:1]
+        x2 = XZ[:, 1:self.X_dim]
+        z_prior = XZ[:, self.X_dim:self.X_dim+self.Z_dim]
         with tf.GradientTape(persistent=True) as tape:
-            tape.watch(x1_f)
-            tape.watch(x2_f)
-            X = tf.concat([x1_f, x2_f], axis=1)
-            u = self.model_p(tf.concat([X, z_prior], axis=1))
-            u_x1 = tape.gradient(u, x1_f)
-            u_x2 = tape.gradient(u, x2_f)
+            tape.watch(x1)
+            tape.watch(x2)
+            u = self.model_p(tf.concat([x1, x2, z_prior], axis=1))
+            u_x1 = tape.gradient(u, x1)
+            u_x2 = tape.gradient(u, x2)
             K = self.model_p_K(u)
             Ku_x1 = K*u_x1
             Ku_x2 = K*u_x2
-        f_1 = tape.gradient(Ku_x1, x1_f)
-        f_2 = tape.gradient(Ku_x2, x2_f)
+        f_1 = tape.gradient(Ku_x1, x1)
+        f_2 = tape.gradient(Ku_x2, x2)
         del tape
         return f_1 + f_2
 
@@ -208,8 +202,10 @@ class BurgersInformedNN(AdvNeuralNetwork):
         b4_pred = self.model_b4(tf.concat([self.x1_b4, self.x2_b4, self.z_b4],
                                 axis=1))
         return tf.reduce_mean(tf.square(f_pred)) + \
-               tf.reduce_mean(tf.square(b1_pred)) + tf.reduce_mean(tf.square(b2_pred)) + \
-               tf.reduce_mean(tf.square(b3_pred)) + tf.reduce_mean(tf.square(b4_pred))
+            tf.reduce_mean(tf.square(b1_pred)) + \
+            tf.reduce_mean(tf.square(b2_pred)) + \
+            tf.reduce_mean(tf.square(b3_pred)) + \
+            tf.reduce_mean(tf.square(b4_pred))
     
     def wrap_generator_variables(self):
         var = super().wrap_generator_variables()
@@ -236,7 +232,8 @@ class BurgersInformedNN(AdvNeuralNetwork):
             X_u_batch, u_batch, X_f_batch = self.fetch_minibatch(X_u, u, X_f)
             z_u, z_f = self.generate_latent_variables()
             loss_G, loss_KL, loss_recon, loss_PDE, loss_T = \
-                    self.optimization_step(X_u_batch, u_batch, X_f_batch, z_u, z_f)
+                self.optimization_step(X_u_batch, u_batch,
+                                       X_f_batch, z_u, z_f)
             loss_str = f"KL_loss: {loss_KL:.2e}," + \
                        f"Recon_loss: {loss_recon:.2e}," + \
                        f"PDE_loss: {loss_PDE:.2e}," \
@@ -244,36 +241,35 @@ class BurgersInformedNN(AdvNeuralNetwork):
             self.logger.log_train_epoch(epoch, loss_G, custom=loss_str)
 
         self.logger.log_train_end(self.epochs)
-    
-    def predict_k(self, X_star): 
-        u_star = self.predict(X_star)
+
+    def predict_u(self, X_star):
+        u_star = self.predict_sample(X_star)
+        return u_star
+
+    def predict_k(self, X_star):
+        u_star = self.predict_u(X_star)
         k_star = self.model_p_K(u_star)
         return k_star / self.ksat
-    
-    def predict(self, X_star): 
+
+    def predict_f(self, X_star):
         X_star = self.normalize(X_star)
-        z = np.random.randn(X_star.shape[0], self.Z_dim)       
-        u_star = self.model_p(tf.concat([X_star, z], axis=1)) 
-        return u_star
-    
-    def predict_f(self, X_star): 
-        X_star = self.normalize(X_star)
-        z = np.random.randn(X_star.shape[0], self.Z_dim)       
-        f_star = self.model_r(tf.concat([X_star, z], axis=1)) 
+        Z = np.random.randn(X_star.shape[0], self.Z_dim)
+        f_star = self.model_r(tf.concat([X_star, Z], axis=1))
         return f_star
-    
+
+
 # %% TRAINING THE MODEL
 
 # Getting the data
 path = os.path.join(eqnPath, "data", "nonlinear2d_data.npz")
 X_star, Exact_u, Exact_k, X_u_train, u_train, \
     X_f, X_b, ub, lb = prep_data(path, hp["N_u"], hp["N_b"], hp["N_f"],
-                            hp["L_1"], hp["L_2"],
-                            noise=hp["noise"])
+                                 hp["L_1"], hp["L_2"],
+                                 noise=hp["noise"])
 
 # Creating the model
-logger = Logger(frequency=hp["log_frequency"], hp=hp)
-pinn = BurgersInformedNN(hp, logger, X_f, X_b, ub, lb)
+logger = Logger(hp)
+pinn = DarcysInformedNN(hp, logger, X_f, X_b, ub, lb)
 
 # Defining the error function for the logger
 def error():
@@ -291,7 +287,7 @@ uuu = np.zeros((X_star.shape[0], N_samples))
 fff = np.zeros((X_star.shape[0], N_samples))
 for i in range(0, N_samples):
     kkk[:, i:i+1] = pinn.predict_k(X_star)
-    uuu[:, i:i+1] = pinn.predict(X_star)
+    uuu[:, i:i+1] = pinn.predict_u(X_star)
     fff[:, i:i+1] = pinn.predict_f(X_star)
 
 # %% PLOTTING
