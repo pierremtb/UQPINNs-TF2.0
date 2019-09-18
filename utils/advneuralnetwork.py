@@ -51,9 +51,10 @@ class AdvNeuralNetwork(object):
         return model
 
     def physics_informed_loss(self, f_pred):
-        return tf.reduce_mean(tf.squae(f_pred))
+        return tf.reduce_mean(tf.square(f_pred))
 
     # Mininizing the G-Loss
+    @tf.function
     def generator_loss(self, X_u, u, u_pred, f_pred, Z_u):
         # Prior:
         z_u_prior = Z_u
@@ -68,7 +69,7 @@ class AdvNeuralNetwork(object):
         KL = tf.reduce_mean(T_pred)
 
         # Entropic regularization
-        log_q = - tf.reduce_mean(tf.square(z_u_prior - z_u_encoder))
+        log_q = -tf.reduce_mean(tf.square(z_u_prior - z_u_encoder))
 
         # Physics-informed loss
         loss_f = self.physics_informed_loss(f_pred)
@@ -79,6 +80,7 @@ class AdvNeuralNetwork(object):
         return loss, KL, (1.0 - self.kl_lambda)*log_q, self.kl_beta * loss_f
 
     # Minimizing the D-loss
+    @tf.function
     def discriminator_loss(self, X_u, u, Z_u):
         # Prior: p(z)
         z_prior = Z_u
@@ -97,6 +99,7 @@ class AdvNeuralNetwork(object):
 
         return T_loss
 
+    @tf.function
     def generator_grad(self, X_u, u, X_f, Z_u, Z_f):
         with tf.GradientTape(persistent=True) as tape:
             u_pred = self.model_p(tf.concat([X_u, Z_u], axis=1))
@@ -107,6 +110,7 @@ class AdvNeuralNetwork(object):
         del tape
         return loss_G, KL, recon, loss_PDE, grads
 
+    @tf.function
     def discriminator_grad(self, X_u, u, Z_u):
         with tf.GradientTape(persistent=True) as tape:
             loss_T = self.discriminator_loss(X_u, u, Z_u)
@@ -132,6 +136,11 @@ class AdvNeuralNetwork(object):
         var.extend(self.model_t.trainable_variables)
         return var
 
+    def generate_latent_variables(self):
+        z_u = np.random.randn(self.batch_size_u, self.Z_dim)
+        z_f = np.random.randn(self.batch_size_f, self.Z_dim)
+        return z_u, z_f
+
     def summary(self):
         return self.model_p.summary()
 
@@ -151,6 +160,22 @@ class AdvNeuralNetwork(object):
         X_f_batch = self.tensor(X_f[idx_f, :])
         u_batch = self.tensor(u[idx_u, :])
         return X_u_batch, u_batch, X_f_batch
+
+    @tf.function
+    def optimization_step(self, X_u_batch, u_batch, X_f_batch, z_u, z_f):
+        # Dual-Optimization step
+        for _ in range(self.k1):
+            loss_T, grads = \
+                self.discriminator_grad(X_u_batch, u_batch, z_u)
+            self.optimizer_T.apply_gradients(
+                zip(grads, self.wrap_discriminator_variables()))
+        for _ in range(self.k2):
+            loss_G, loss_KL, loss_recon, loss_PDE, grads = \
+                self.generator_grad(X_u_batch, u_batch,
+                                    X_f_batch, z_u, z_f)
+            self.optimizer_KL.apply_gradients(
+                zip(grads, self.wrap_generator_variables()))
+        return loss_G, loss_KL, loss_recon, loss_PDE, loss_T
 
     # Generate samples of y given x by sampling from the latent space z
     def sample_generator(self, X, Z):

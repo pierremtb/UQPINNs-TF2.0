@@ -103,7 +103,8 @@ class BurgersInformedNN(AdvNeuralNetwork):
 
     def f(self, x):
         return tf.zeros_like(x)
-
+    
+    @tf.function
     def model_r(self, XZ_f):
         x_f = XZ_f[:, 0:1]
         t_f = XZ_f[:, 1:2]
@@ -145,23 +146,9 @@ class BurgersInformedNN(AdvNeuralNetwork):
         self.logger.log_train_opt("Adam")
         for epoch in range(self.epochs):
             X_u_batch, u_batch, X_f_batch = self.fetch_minibatch(X_u, u, X_f)
-
-            Z_u = np.random.randn(self.batch_size_u, 1)
-            Z_f = np.random.randn(self.batch_size_f, 1)
-
-            # Dual-Optimization step
-            for _ in range(self.k1):
-                loss_T, grads = \
-                    self.discriminator_grad(X_u_batch, u_batch, Z_u)
-                self.optimizer_T.apply_gradients(
-                    zip(grads, self.wrap_discriminator_variables()))
-            for _ in range(self.k2):
-                loss_G, loss_KL, loss_recon, loss_PDE, grads = \
-                    self.generator_grad(X_u_batch, u_batch,
-                                        X_f_batch, Z_u, Z_f)
-                self.optimizer_KL.apply_gradients(
-                    zip(grads, self.wrap_generator_variables()))
-
+            z_u, z_f = self.generate_latent_variables()
+            loss_G, loss_KL, loss_recon, loss_PDE, loss_T = \
+                    self.optimization_step(X_u_batch, u_batch, X_f_batch, z_u, z_f)
             loss_str = f"KL_loss: {loss_KL:.2e}," + \
                        f"Recon_loss: {loss_recon:.2e}," + \
                        f"PDE_loss: {loss_PDE:.2e}," \
@@ -206,7 +193,7 @@ x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, \
                             noise_is_gaussian=hp["noise_is_gaussian"])
 
 # Creating the model
-logger = Logger(frequency=100, hp=hp)
+logger = Logger(frequency=10, hp=hp)
 pinn = BurgersInformedNN(hp, logger, X_f, ub, lb)
 
 # Defining the error function for the logger

@@ -16,11 +16,19 @@ class Logger(object):
         print("GPU-accerelated: {}".format(tf.test.is_gpu_available()))
 
         self.start_time = time.time()
+        self.prev_time = self.start_time
         self.frequency = frequency
+
+    def __get_epoch_duration(self):
+        now = time.time()
+        edur = datetime.fromtimestamp(now - self.prev_time) \
+                .strftime("%S.%f")[:-5]
+        self.prev_time = now
+        return edur
 
     def __get_elapsed(self):
         return datetime.fromtimestamp(time.time() - self.start_time) \
-                       .strftime("%M:%S")
+                .strftime("%M:%S")
 
     def __get_error_u(self):
         return self.error_fn()
@@ -39,7 +47,8 @@ class Logger(object):
         if epoch % self.frequency == 0:
             name = 'nt_epoch' if is_iter else 'tf_epoch'
             print(f"{name} = {epoch:6d}  " +
-                  f"elapsed = {self.__get_elapsed()}  " + custom)
+                  f"elapsed = {self.__get_elapsed()}  " +
+                  f"edur = {self.__get_epoch_duration()}  " + custom)
 
     def log_train_opt(self, name):
         print(f"—— Starting {name} optimization ——")

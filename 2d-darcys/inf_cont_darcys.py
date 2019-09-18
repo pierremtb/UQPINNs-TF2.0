@@ -47,7 +47,7 @@ else:
                       50, 50, 50,
                       1]
     # DeepNN topo of the additional NN to infer K(u)
-    hp["layers_P_k"] = [hp["Y_dim"],
+    hp["layers_P_K"] = [hp["Y_dim"],
                         50, 50, 50, 50,
                         hp["Y_dim"]]
     # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
@@ -94,7 +94,7 @@ class BurgersInformedNN(AdvNeuralNetwork):
 
         # Setting up tensors for colloc pts
         self.x1_f = X_f[:, 0:1]
-        self.x2_f = X_f[:, 1:2]
+        self.x2_f = X_f[:, 1:self.X_dim]
 
         # Setting up boundaries pts
         self.x1_b1 = X_b[:, 0:1]
@@ -115,8 +115,10 @@ class BurgersInformedNN(AdvNeuralNetwork):
         # model_p(X, z)
         # model_q(X, u)
         # model_t(X, u)
-        # Additional DNN model for u -> K(u): model_p_K(u)
-        self.model_p_K = self.declare_model(hp["layers_P_k"])
+        # Additional DNN model for u -> K(u): model_p_K(u), with a transf at the end
+        self.model_p_K = self.declare_model(hp["layers_P_K"])
+        self.model_p_K.add(tf.keras.layers.Lambda(
+            lambda Y: self.ksat * tf.exp(Y)))
 
     # Normalization functions adapted to our case
     def normalize(self, X):
@@ -126,6 +128,7 @@ class BurgersInformedNN(AdvNeuralNetwork):
         return (X - self.lbb) - 0.5*(self.ubb - self.lbb)
 
     # Boundary helpers
+    @tf.function
     def model_b1(self, XZ):   
         x1 = XZ[:, 0:1]
         x2 = XZ[:, 1:self.X_dim]
@@ -136,13 +139,14 @@ class BurgersInformedNN(AdvNeuralNetwork):
             u = self.model_p(XZtemp)
         u_x1 = tape.gradient(u, x1)
         del tape
-        k = self.model_p_K(u)
-        temp = self.q + k * u_x1
+        K = self.model_p_K(u)
+        temp = self.q + K * u_x1
         return temp
     
+    @tf.function
     def model_b2(self, XZ):   
         x1 = XZ[:, 0:1]
-        x2 = XZ[:, 1:2]
+        x2 = XZ[:, 1:self.X_dim]
         z = XZ[:, self.X_dim:self.X_dim+self.Z_dim]
         with tf.GradientTape(persistent=True) as tape:
             tape.watch(x2)
@@ -152,14 +156,16 @@ class BurgersInformedNN(AdvNeuralNetwork):
         del tape
         return u_x2
 
+    @tf.function
     def model_b3(self, XZ):   
         u = self.model_p(XZ)
         temp = u - self.u_0
         return temp
 
+    @tf.function
     def model_b4(self, XZ):   
         x1 = XZ[:, 0:1]
-        x2 = XZ[:, 1:2]
+        x2 = XZ[:, 1:self.X_dim]
         z = XZ[:, self.X_dim:self.X_dim+self.Z_dim]
         with tf.GradientTape(persistent=True) as tape:
             tape.watch(x2)
@@ -169,9 +175,10 @@ class BurgersInformedNN(AdvNeuralNetwork):
         del tape
         return u_x2
 
+    @tf.function
     def model_r(self, XZ_f):
         x1_f = XZ_f[:, 0:1]
-        x2_f = XZ_f[:, 1:2]
+        x2_f = XZ_f[:, 1:self.X_dim]
         z_prior = XZ_f[:, self.X_dim:self.X_dim+self.Z_dim]
         with tf.GradientTape(persistent=True) as tape:
             tape.watch(x1_f)
@@ -188,6 +195,7 @@ class BurgersInformedNN(AdvNeuralNetwork):
         del tape
         return f_1 + f_2
 
+    @tf.function
     def physics_informed_loss(self, f_pred):
         b1_pred = self.model_b1(tf.concat([self.x1_b1, self.x2_b1, self.z_b1],
                                 axis=1))
@@ -206,6 +214,13 @@ class BurgersInformedNN(AdvNeuralNetwork):
         var.extend(self.model_p_K.trainable_variables)
         return var
 
+    def generate_latent_variables(self):
+        self.z_b1 = np.random.randn(self.x1_b1.shape[0], self.Z_dim)
+        self.z_b2 = np.random.randn(self.x1_b2.shape[0], self.Z_dim)
+        self.z_b3 = np.random.randn(self.x1_b3.shape[0], self.Z_dim)
+        self.z_b4 = np.random.randn(self.x1_b4.shape[0], self.Z_dim)
+        return super().generate_latent_variables()
+
     # The training function
     def fit(self, X_u, u):
         self.logger.log_train_start(self)
@@ -217,32 +232,9 @@ class BurgersInformedNN(AdvNeuralNetwork):
         self.logger.log_train_opt("Adam")
         for epoch in range(self.epochs):
             X_u_batch, u_batch, X_f_batch = self.fetch_minibatch(X_u, u, X_f)
-
-            # Sampling from latent spaces
-            # z_u = np.random.randn(x1_u.shape[0], self.Z_dim)
-            # z_f = np.random.randn(self.x1_f.shape[0], self.Z_dim)
-            
-            z_u = np.random.randn(self.batch_size_u, self.Z_dim)
-            z_f = np.random.randn(self.batch_size_f, self.Z_dim)
-
-            self.z_b1 = np.random.randn(self.x1_b1.shape[0], self.Z_dim)
-            self.z_b2 = np.random.randn(self.x1_b2.shape[0], self.Z_dim)
-            self.z_b3 = np.random.randn(self.x1_b3.shape[0], self.Z_dim)
-            self.z_b4 = np.random.randn(self.x1_b4.shape[0], self.Z_dim)
-
-            # Dual-Optimization step
-            for _ in range(self.k1):
-                loss_T, grads = \
-                    self.discriminator_grad(X_u_batch, u_batch, z_u)
-                self.optimizer_T.apply_gradients(
-                    zip(grads, self.wrap_discriminator_variables()))
-            for _ in range(self.k2):
-                loss_G, loss_KL, loss_recon, loss_PDE, grads = \
-                    self.generator_grad(X_u_batch, u_batch,
-                                        X_f_batch, z_u, z_f)
-                self.optimizer_KL.apply_gradients(
-                    zip(grads, self.wrap_generator_variables()))
-
+            z_u, z_f = self.generate_latent_variables()
+            loss_G, loss_KL, loss_recon, loss_PDE, loss_T = \
+                    self.optimization_step(X_u_batch, u_batch, X_f_batch, z_u, z_f)
             loss_str = f"KL_loss: {loss_KL:.2e}," + \
                        f"Recon_loss: {loss_recon:.2e}," + \
                        f"PDE_loss: {loss_PDE:.2e}," \
@@ -250,7 +242,7 @@ class BurgersInformedNN(AdvNeuralNetwork):
             self.logger.log_train_epoch(epoch, loss_G, custom=loss_str)
 
         self.logger.log_train_end(self.epochs)
-
+    
     def predict_k(self, X_star): 
         u_star = self.predict(X_star)
         k_star = self.model_p_K(u_star)
@@ -278,7 +270,7 @@ X_star, Exact_u, Exact_k, X_u_train, u_train, \
                             noise=hp["noise"])
 
 # Creating the model
-logger = Logger(frequency=100, hp=hp)
+logger = Logger(frequency=1, hp=hp)
 pinn = BurgersInformedNN(hp, logger, X_f, X_b, ub, lb)
 
 # Defining the error function for the logger
