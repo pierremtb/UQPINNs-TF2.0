@@ -100,14 +100,16 @@ class AdvNeuralNetwork(object):
 
         return T_loss
 
-    @tf.function
     def generator_grad(self, X_u, u, X_f, Z_u, Z_f):
-        with tf.GradientTape() as tape:
+        with tf.GradientTape(persistent=True) as tape:
+            var = self.wrap_generator_variables()
+            tape.watch(var)
             u_pred = self.model_p(tf.concat([X_u, Z_u], axis=1))
             f_pred = self.model_r(tf.concat([X_f, Z_f], axis=1))
             loss_G, loss_KL, loss_recon, loss_PDE = \
                 self.generator_loss(X_u, u, u_pred, f_pred, Z_u)
-        grads = tape.gradient(loss_G, self.wrap_generator_variables())
+        grads = tape.gradient(loss_G, var)
+        del tape
         return loss_G, loss_KL, loss_recon, loss_PDE, grads
 
     @tf.function

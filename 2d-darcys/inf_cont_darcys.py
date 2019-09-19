@@ -79,7 +79,7 @@ else:
     # Noise on initial data
     hp["noise"] = 0.0
     # Frequency of training logs
-    hp["log_frequency"] = 1
+    hp["log_frequency"] = 10
 
 # %% DEFINING THE MODEL
 
@@ -234,10 +234,10 @@ class DarcysInformedNN(AdvNeuralNetwork):
             loss_G, loss_KL, loss_recon, loss_PDE, loss_T = \
                 self.optimization_step(X_u_batch, u_batch,
                                        X_f_batch, z_u, z_f)
-            loss_str = f"KL_loss: {loss_KL:.2e}," + \
-                       f"Recon_loss: {loss_recon:.2e}," + \
-                       f"PDE_loss: {loss_PDE:.2e}," \
-                       f"T_loss: {loss_T:.2e}"
+            loss_str = f"{loss_G:.2e}, KL_loss: {loss_KL:.2e}," + \
+                   f"Recon_loss: {loss_recon:.2e}," + \
+                   f"PDE_loss: {loss_PDE:.2e}," \
+                   f"T_loss: {loss_T:.2e}"
             self.logger.log_train_epoch(epoch, loss_G, custom=loss_str)
 
         self.logger.log_train_end(self.epochs)
