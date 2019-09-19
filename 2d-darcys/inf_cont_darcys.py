@@ -51,10 +51,10 @@ else:
                         50, 50, 50, 50,
                         hp["Y_dim"]]
     # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
-    hp["tf_epochs"] = 50
+    hp["tf_epochs"] = 10000
     hp["tf_lr"] = 0.0001
     hp["tf_b1"] = 0.9
-    hp["tf_eps"] = None
+    hp["tf_eps"] = 1e-08
     # Setting up the quasi-newton LBGFS optimizer (set nt_epochs=0 to cancel)
     # hp["nt_epochs"] = 500
     # hp["nt_lr"] = 1.0
