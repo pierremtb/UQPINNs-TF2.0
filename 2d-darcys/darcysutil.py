@@ -69,6 +69,8 @@ def prep_data(path, N_u, N_b, N_f, L_1, L_2, noise=0.0):
     #     u_train[i, :] = u[idx_u[i]]
 
     X_u_train, u_train = scarcify(X, u, N_u)
+    u_train = u_train + \
+        noise * np.std(u_train) * np.random.randn(N_u, u_train.shape[1])
 
     ub = np.array([L_1, L_2])
     lb = np.array([0., 0.])

@@ -77,7 +77,7 @@ else:
     hp["q"] = 1
     hp["ksat"] = 10
     # Noise on initial data
-    hp["noise"] = 0.0
+    hp["noise"] = 0.05
     # Frequency of training logs
     hp["log_frequency"] = 10
 
@@ -214,7 +214,6 @@ class DarcysInformedNN(AdvNeuralNetwork):
 
     @tf.function
     def generate_latent_variables(self):
-        print("glv")
         self.z_b1 = np.random.randn(self.x1_b1.shape[0], self.Z_dim)
         self.z_b2 = np.random.randn(self.x1_b2.shape[0], self.Z_dim)
         self.z_b3 = np.random.randn(self.x1_b3.shape[0], self.Z_dim)
