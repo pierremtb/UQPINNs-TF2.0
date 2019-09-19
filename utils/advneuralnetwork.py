@@ -100,9 +100,9 @@ class AdvNeuralNetwork(object):
 
         return T_loss
 
-    def generator_grad(self, X_u, u, X_f, Z_u, Z_f):
+    @tf.function
+    def generator_grad(self, X_u, u, X_f, Z_u, Z_f, var):
         with tf.GradientTape(persistent=True) as tape:
-            var = self.wrap_generator_variables()
             tape.watch(var)
             u_pred = self.model_p(tf.concat([X_u, Z_u], axis=1))
             f_pred = self.model_r(tf.concat([X_f, Z_f], axis=1))
@@ -113,10 +113,11 @@ class AdvNeuralNetwork(object):
         return loss_G, loss_KL, loss_recon, loss_PDE, grads
 
     @tf.function
-    def discriminator_grad(self, X_u, u, Z_u):
+    def discriminator_grad(self, X_u, u, Z_u, var):
         with tf.GradientTape() as tape:
+            tape.watch(var)
             loss_T = self.discriminator_loss(X_u, u, Z_u)
-        grads = tape.gradient(loss_T, self.wrap_discriminator_variables())
+        grads = tape.gradient(loss_T, var)
         return loss_T, grads
 
     # right hand side terms of the PDE
@@ -166,16 +167,15 @@ class AdvNeuralNetwork(object):
     def optimization_step(self, X_u_batch, u_batch, X_f_batch, z_u, z_f):
         # Dual-Optimization step
         for _ in range(self.k1):
+            var = self.wrap_discriminator_variables()
             loss_T, grads = \
-                self.discriminator_grad(X_u_batch, u_batch, z_u)
-            self.optimizer_T.apply_gradients(
-                zip(grads, self.wrap_discriminator_variables()))
+                self.discriminator_grad(X_u_batch, u_batch, z_u, var)
+            self.optimizer_T.apply_gradients(zip(grads, var))
         for _ in range(self.k2):
+            var = self.wrap_generator_variables()
             loss_G, loss_KL, loss_recon, loss_PDE, grads = \
-                self.generator_grad(X_u_batch, u_batch,
-                                    X_f_batch, z_u, z_f)
-            self.optimizer_KL.apply_gradients(
-                zip(grads, self.wrap_generator_variables()))
+                self.generator_grad(X_u_batch, u_batch, X_f_batch, z_u, z_f, var)
+            self.optimizer_KL.apply_gradients(zip(grads, var))
         return loss_G, loss_KL, loss_recon, loss_PDE, loss_T
 
     def predict_sample(self, X_star):
