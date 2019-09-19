@@ -79,7 +79,7 @@ else:
     # Noise on initial data
     hp["noise"] = 0.0
     # Frequency of training logs
-    hp["log_frequency"] = 10
+    hp["log_frequency"] = 1
 
 # %% DEFINING THE MODEL
 
@@ -117,8 +117,8 @@ class DarcysInformedNN(AdvNeuralNetwork):
         # Additional DNN model for u -> K(u): model_p_K(u),
         # with a transf at the end
         self.model_p_K = self.declare_model(hp["layers_P_K"])
-        self.model_p_K.add(tf.keras.layers.Lambda(
-            lambda Y: self.ksat * tf.exp(Y)))
+        # self.model_p_K.add(tf.keras.layers.Lambda(
+        #     lambda Y: self.ksat * tf.exp(Y)))
 
     # Normalization functions adapted to our case
     def normalize(self, X):
@@ -138,9 +138,13 @@ class DarcysInformedNN(AdvNeuralNetwork):
             XZtemp = tf.concat([x1, x2, z], axis=1)
             u = self.model_p(XZtemp)
         u_x1 = tape.gradient(u, x1)
-        K = self.model_p_K(u)
+        K = self.model_p_K_final(u)
         temp = self.q + K * u_x1
         return temp
+
+    def model_p_K_final(self, u):
+        K = self.model_p_K(u)
+        return self.ksat * tf.exp(K)
 
     @tf.function
     def model_b2(self, XZ): 
@@ -183,7 +187,7 @@ class DarcysInformedNN(AdvNeuralNetwork):
             u = self.model_p(tf.concat([x1, x2, z_prior], axis=1))
             u_x1 = tape.gradient(u, x1)
             u_x2 = tape.gradient(u, x2)
-            K = self.model_p_K(u)
+            K = self.model_p_K_final(u)
             Ku_x1 = K*u_x1
             Ku_x2 = K*u_x2
         f_1 = tape.gradient(Ku_x1, x1)
@@ -248,7 +252,7 @@ class DarcysInformedNN(AdvNeuralNetwork):
 
     def predict_k(self, X_star):
         u_star = self.predict_u(X_star)
-        k_star = self.model_p_K(u_star)
+        k_star = self.model_p_K_final(u_star)
         return k_star / self.ksat
 
     def predict_f(self, X_star):
