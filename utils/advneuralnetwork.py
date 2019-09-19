@@ -43,10 +43,13 @@ class AdvNeuralNetwork(object):
     def declare_model(self, layers):
         model = tf.keras.Sequential()
         model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
-        for width in layers[1:]:
+        for width in layers[1:-1]:
             model.add(tf.keras.layers.Dense(
                 width, activation=tf.nn.tanh,
                 kernel_initializer="glorot_normal"))
+        model.add(tf.keras.layers.Dense(
+	    layers[-1], activation=None,
+	    kernel_initializer="glorot_normal"))
         return model
 
     def physics_informed_loss(self, f_pred):

@@ -51,7 +51,7 @@ else:
                         50, 50, 50, 50,
                         hp["Y_dim"]]
     # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
-    hp["tf_epochs"] = 10000
+    hp["tf_epochs"] = 5000
     hp["tf_lr"] = 0.0001
     hp["tf_b1"] = 0.9
     hp["tf_eps"] = 1e-08
@@ -79,7 +79,7 @@ else:
     # Noise on initial data
     hp["noise"] = 0.0
     # Frequency of training logs
-    hp["log_frequency"] = 1
+    hp["log_frequency"] = 10
 
 # %% DEFINING THE MODEL
 
