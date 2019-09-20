@@ -18,18 +18,18 @@ class Logger(object):
         self.prev_time = self.start_time
         self.frequency = hp["log_frequency"]
 
-    def __get_epoch_duration(self):
+    def get_epoch_duration(self):
         now = time.time()
         edur = datetime.fromtimestamp(now - self.prev_time) \
-                .strftime("%S.%f")[:-5]
+            .strftime("%S.%f")[:-5]
         self.prev_time = now
         return edur
 
-    def __get_elapsed(self):
+    def get_elapsed(self):
         return datetime.fromtimestamp(time.time() - self.start_time) \
                 .strftime("%M:%S")
 
-    def __get_error_u(self):
+    def get_error_u(self):
         return self.error_fn()
 
     def set_error_fn(self, error_fn):
@@ -46,8 +46,9 @@ class Logger(object):
         if epoch % self.frequency == 0:
             name = 'nt_epoch' if is_iter else 'tf_epoch'
             print(f"{name} = {epoch:6d}  " +
-                  f"elapsed = {self.__get_elapsed()}  " +
-                  f"edur = {self.__get_epoch_duration()}  " + custom)
+                  f"elapsed = {self.get_elapsed()} " +
+                  f"(+{self.get_epoch_duration()})  " +
+                  f"loss = {loss:.4e}  " + custom)
 
     def log_train_opt(self, name):
         print(f"-- Starting {name} optimization --")
@@ -55,5 +56,5 @@ class Logger(object):
     def log_train_end(self, epoch, custom=""):
         print("==================")
         print(f"Training finished (epoch {epoch}): " +
-              f"duration = {self.__get_elapsed()}  " +
-              f"error = {self.__get_error_u():.4e}  " + custom)
+              f"duration = {self.get_elapsed()}  " +
+              f"error = {self.get_error_u():.4e}  " + custom)

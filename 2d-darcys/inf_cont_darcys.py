@@ -51,7 +51,7 @@ else:
                         50, 50, 50, 50,
                         hp["Y_dim"]]
     # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
-    hp["tf_epochs"] = 5000
+    hp["tf_epochs"] = 10000
     hp["tf_lr"] = 0.0001
     hp["tf_b1"] = 0.9
     hp["tf_eps"] = 1e-08
@@ -235,10 +235,10 @@ class DarcysInformedNN(AdvNeuralNetwork):
             loss_G, loss_KL, loss_recon, loss_PDE, loss_T = \
                 self.optimization_step(X_u_batch, u_batch,
                                        X_f_batch, z_u, z_f)
-            loss_str = f"{loss_G:.2e}, KL_loss: {loss_KL:.2e}," + \
-                   f"Recon_loss: {loss_recon:.2e}," + \
-                   f"PDE_loss: {loss_PDE:.2e}," \
-                   f"T_loss: {loss_T:.2e}"
+            loss_str = f"KL: {loss_KL:.2e}, " + \
+                       f"R: {loss_recon:.2e}, " + \
+                       f"F: {loss_PDE:.2e}, " + \
+                       f"T: {loss_T:.2e}"
             self.logger.log_train_epoch(epoch, loss_G, custom=loss_str)
 
         self.logger.log_train_end(self.epochs)
