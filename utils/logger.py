@@ -50,7 +50,7 @@ class Logger(object):
                   f"edur = {self.__get_epoch_duration()}  " + custom)
 
     def log_train_opt(self, name):
-        print(f"—— Starting {name} optimization ——")
+        print(f"-- Starting {name} optimization --")
 
     def log_train_end(self, epoch, custom=""):
         print("==================")
