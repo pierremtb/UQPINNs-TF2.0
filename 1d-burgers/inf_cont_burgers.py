@@ -195,7 +195,7 @@ x, t, X, T, Exact_u, X_star, u_star, X_u_train, u_train, \
                             noise_is_gaussian=hp["noise_is_gaussian"])
 
 # Creating the model
-logger = Logger(frequency=10, hp=hp)
+logger = Logger(hp)
 pinn = BurgersInformedNN(hp, logger, X_f, ub, lb)
 
 # Defining the error function for the logger
