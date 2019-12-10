@@ -48,49 +48,51 @@ def prep_data(path, N_i, N_b, N_f, noise=0.0, noise_is_gaussian=True):
     ub = X_star.max(axis=0)
 
     # Getting the initial conditions (t=0)
-    X_i = np.hstack((X[0:1, :].T, T[0:1, :].T))
-    u_i = Exact_u[0:1, :].T    
-    X_i, u_i_0 = scarcify(X_i, u_i, N_i)
-    if noise_is_gaussian or noise == 0.0:
-        u_i = u_i_0 + \
-            noise*np.std(u_i_0)*np.random.randn(u_i_0.shape[0], u_i_0.shape[1])
-    else:
-        # Fabricating a non-additive, non gaussian noise
-        x_i = X_i[:, 0:1]
-        error = 1.0/np.exp(3.0*(abs(x_i))) * \
-            np.random.normal(0, noise, x_i.size)[:, None]
-        u_i = -np.sin(np.pi*(x_i + 2*error)) + error
-    # Getting the lowest boundary conditions (x=-1) 
-    X_bl = np.hstack((X[:, 0:1], T[:, 0:1]))
-    u_bl = Exact_u[:, 0:1]
-    X_bl, u_bl = scarcify(X_bl, u_bl, N_b // 2)
-    # Getting the highest boundary conditions (x=1) 
-    X_bh = np.hstack((X[:, -1:], T[:, -1:]))
-    u_bh = Exact_u[:, -1:]
-    X_bh, u_bh = scarcify(X_bh, u_bh, N_b // 2)
+    # X_i = np.hstack((X[0:1, :].T, T[0:1, :].T))
+    X_u_train, u_train = scarcify(X_star, u_star, 1000)
+    # u_i = Exact_u[0:1, :].T    
+    # u_train = u_star    
+    # X_i, u_i_0 = scarcify(X_i, u_i, N_i)
+    # if noise_is_gaussian or noise == 0.0:
+    #     u_i = u_i_0 + \
+    #         noise*np.std(u_i_0)*np.random.randn(u_i_0.shape[0], u_i_0.shape[1])
+    # else:
+    #     # Fabricating a non-additive, non gaussian noise
+    #     x_i = X_i[:, 0:1]
+    #     error = 1.0/np.exp(3.0*(abs(x_i))) * \
+    #         np.random.normal(0, noise, x_i.size)[:, None]
+    #     u_i = -np.sin(np.pi*(x_i + 2*error)) + error
+    # # Getting the lowest boundary conditions (x=-1) 
+    # X_bl = np.hstack((X[:, 0:1], T[:, 0:1]))
+    # u_bl = Exact_u[:, 0:1]
+    # X_bl, u_bl = scarcify(X_bl, u_bl, N_b // 2)
+    # # Getting the highest boundary conditions (x=1) 
+    # X_bh = np.hstack((X[:, -1:], T[:, -1:]))
+    # u_bh = Exact_u[:, -1:]
+    # X_bh, u_bh = scarcify(X_bh, u_bh, N_b // 2)
     
     # Stacking them in multidimensional tensors for training
     # (X_u_train is for now the continuous boundaries)
-    X_u_train = np.vstack([X_i, X_bl, X_bh])
-    u_train = np.vstack([u_i, u_bl, u_bh])
+    # X_u_train = np.vstack([X_i, X_bl, X_bh])
+    # u_train = np.vstack([u_i, u_bl, u_bh])
 
     # Generating the x and t colloc points for f, with each having a N_f size
     # We pointwise add and multiply to spread the LHS over the 2D domain
     X_f_train = lb + (ub-lb)*lhs(2, N_f)
 
     # Plot the exact initial condition with the data for the initial condition
-    plt.figure(1, figsize=(6, 4))
-    plt.xticks(fontsize=11)
-    plt.yticks(fontsize=11)
-    plt.plot(X[0:1, :].T, Exact_u[0:1, :].T, "b-", label="Exact", linewidth=2)
-    plt.plot(X_i[:, 0:1], u_i, "kx", label="Non-noisy initial condition",
-             alpha=1.)
-    plt.legend(loc="upper right", frameon=False, prop={'size': 11})
-    plt.gca()
-    plt.xlim(-1.0, 1.0)
-    plt.xlabel("$x$", fontsize=11)
-    plt.ylabel("$u(0, x)$", fontsize=11)
-    savefig(f"init-" + datetime.now().strftime('%Y%m%d-%H%M%S'))
+    # plt.figure(1, figsize=(6, 4))
+    # plt.xticks(fontsize=11)
+    # plt.yticks(fontsize=11)
+    # plt.plot(X[0:1, :].T, Exact_u[0:1, :].T, "b-", label="Exact", linewidth=2)
+    # plt.plot(X_i[:, 0:1], u_i, "kx", label="Non-noisy initial condition",
+    #          alpha=1.)
+    # plt.legend(loc="upper right", frameon=False, prop={'size': 11})
+    # plt.gca()
+    # plt.xlim(-1.0, 1.0)
+    # plt.xlabel("$x$", fontsize=11)
+    # plt.ylabel("$u(0, x)$", fontsize=11)
+    # savefig(f"init-" + datetime.now().strftime('%Y%m%d-%H%M%S'))
     
     return x, t, X, T, Exact_u, X_star, u_star, \
         X_u_train, u_train, X_f_train, ub, lb

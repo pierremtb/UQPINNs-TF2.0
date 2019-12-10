@@ -9,7 +9,7 @@ from scipy.interpolate import griddata
 np.random.seed(1234)
 tf.random.set_seed(1234)
 
-# %% LOCAL IMPORTS
+# %% LOCAL IMPORTS
 
 eqnPath = "1d-burgers"
 sys.path.append(eqnPath)
@@ -18,7 +18,7 @@ from logger import Logger
 from burgersutil import prep_data, plot_inf_cont_results
 from advneuralnetwork import AdvNeuralNetwork
 
-# %% HYPER PARAMETERS
+# %% HYPER PARAMETERS
 # plt.savefig("./Initial.png", dpi=600)
 if len(sys.argv) > 1:
     # if False:
@@ -49,6 +49,7 @@ else:
                       1]
     # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
     hp["tf_epochs"] = 10000
+    hp["tf_epochs"] = 0
     hp["tf_lr"] = 0.0001
     hp["tf_b1"] = 0.9
     hp["tf_eps"] = None
@@ -63,7 +64,8 @@ else:
     hp["k1"] = 1
     hp["k2"] = 5
     # Batch size
-    hp["batch_size_u"] = hp["N_i"] + hp["N_b"]
+    # hp["batch_size_u"] = hp["N_i"] + hp["N_b"]
+    hp["batch_size_u"] = 0
     hp["batch_size_f"] = hp["N_f"]
     # Noise on initial data
     hp["noise"] = 0.0
@@ -71,7 +73,7 @@ else:
     # Logging
     hp["log_frequency"] = 100
 
-# %% DEFINING THE MODEL
+# %% DEFINING THE MODEL
 
 
 class BurgersInformedNN(AdvNeuralNetwork):
@@ -108,6 +110,7 @@ class BurgersInformedNN(AdvNeuralNetwork):
     
     @tf.function
     def model_r(self, XZ_f):
+        return self.tensor(0.)
         x_f = XZ_f[:, 0:1]
         t_f = XZ_f[:, 1:2]
         z_prior = XZ_f[:, 2:3]
@@ -220,7 +223,7 @@ error_u = np.linalg.norm(Exact_u - U_pred, 2)/np.linalg.norm(Exact_u, 2)
 error_u = np.linalg.norm(Exact_u - U_pred, 2)/np.linalg.norm(Exact_u, 2)
 print("Error on u: ", error_u)
 
-# %% PLOTTING
+# %% PLOTTING
 plot_inf_cont_results(X_star, U_pred, Sigma_pred,
                       X_u_train, u_train, Exact_u, X, T, x, t,
                       save_path=eqnPath, save_hp=hp)

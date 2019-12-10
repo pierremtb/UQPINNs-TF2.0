@@ -9,7 +9,7 @@ from scipy.interpolate import griddata
 np.random.seed(1234)
 tf.random.set_seed(1234)
 
-# %% LOCAL IMPORTS
+# %% LOCAL IMPORTS
 
 eqnPath = "2d-darcys"
 sys.path.append(eqnPath)
@@ -18,7 +18,7 @@ from logger import Logger
 from darcysutil import prep_data, plot_inf_cont_results
 from advneuralnetwork import AdvNeuralNetwork
 
-# %% HYPER PARAMETERS
+# %% HYPER PARAMETERS
 if len(sys.argv) > 1:
     # if False:
     with open(sys.argv[1]) as hpFile:
@@ -81,7 +81,7 @@ else:
     # Frequency of training logs
     hp["log_frequency"] = 10
 
-# %% DEFINING THE MODEL
+# %% DEFINING THE MODEL
 
 
 class DarcysInformedNN(AdvNeuralNetwork):
@@ -291,7 +291,7 @@ for i in range(0, N_samples):
     uuu[:, i:i+1] = pinn.predict_u(X_star)
     fff[:, i:i+1] = pinn.predict_f(X_star)
 
-# %% PLOTTING
+# %% PLOTTING
 print("Plotting")
 plot_inf_cont_results(X_star, Exact_u.T, Exact_k.T, kkk, uuu, fff, ub, lb,
                       save_path=eqnPath, save_hp=hp)
