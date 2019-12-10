@@ -49,7 +49,6 @@ else:
                       1]
     # Setting up the TF SGD-based optimizer (set tf_epochs=0 to cancel it)
     hp["tf_epochs"] = 10000
-    hp["tf_epochs"] = 0
     hp["tf_lr"] = 0.0001
     hp["tf_b1"] = 0.9
     hp["tf_eps"] = None
@@ -65,7 +64,7 @@ else:
     hp["k2"] = 5
     # Batch size
     # hp["batch_size_u"] = hp["N_i"] + hp["N_b"]
-    hp["batch_size_u"] = 0
+    hp["batch_size_u"] = 1000
     hp["batch_size_f"] = hp["N_f"]
     # Noise on initial data
     hp["noise"] = 0.0
