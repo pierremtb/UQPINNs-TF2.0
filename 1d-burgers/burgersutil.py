@@ -62,6 +62,14 @@ def prep_data(path, N_i, N_b, N_f, noise=0.0, noise_is_gaussian=True):
     #     error = 1.0/np.exp(3.0*(abs(x_i))) * \
     #         np.random.normal(0, noise, x_i.size)[:, None]
     #     u_i = -np.sin(np.pi*(x_i + 2*error)) + error
+    u_train = u_train + \
+        noise*np.std(u_train)*np.random.randn(u_train.shape[0], u_train.shape[1])
+    # else:
+    #     # Fabricating a non-additive, non gaussian noise
+    #     x_i = X_u_train[:, 0:1]
+    #     error = 1.0/np.exp(3.0*(abs(x_i))) * \
+    #         np.random.normal(0, noise, x_i.size)[:, None]
+    #     u_train = -np.sin(np.pi*(x_i + 2*error)) + error
     # # Getting the lowest boundary conditions (x=-1) 
     # X_bl = np.hstack((X[:, 0:1], T[:, 0:1]))
     # u_bl = Exact_u[:, 0:1]
@@ -113,6 +121,9 @@ def plot_inf_cont_results(X_star, U_pred, Sigma_pred, X_u_train, u_train, Exact_
   Y_u = u_train
   Exact = Exact_u
 
+  idx25 = np.where(X_u_train[:, 1] == 0.25)[0]
+  idx50 = np.where(X_u_train[:, 1] == 0.50)[0]
+  idx75 = np.where(X_u_train[:, 1] == 0.75)[0]
 
   ####### Row 0: u(t,x) ##################    
   gs0 = gridspec.GridSpec(1, 2)
@@ -146,6 +157,7 @@ def plot_inf_cont_results(X_star, U_pred, Sigma_pred, X_u_train, u_train, Exact_
   ax = plt.subplot(gs1[0, 0])
   ax.plot(x,Exact[25,:], 'b-', linewidth = 2, label = 'Exact')       
   ax.plot(x,U_pred[25,:], 'r--', linewidth = 2, label = 'Prediction')
+  ax.plot(X_u[idx25], Y_u[idx25], 'kx', linewidth = 2, label = 'Data')
   lower = U_pred[25,:] - 2.0*np.sqrt(Sigma_pred[25,:])
   upper = U_pred[25,:] + 2.0*np.sqrt(Sigma_pred[25,:])
   plt.fill_between(x.flatten(), lower.flatten(), upper.flatten(), 
@@ -160,6 +172,7 @@ def plot_inf_cont_results(X_star, U_pred, Sigma_pred, X_u_train, u_train, Exact_
   ax = plt.subplot(gs1[0, 1])
   ax.plot(x,Exact[50,:], 'b-', linewidth = 2, label = 'Exact')       
   ax.plot(x,U_pred[50,:], 'r--', linewidth = 2, label = 'Prediction')
+  ax.plot(X_u[idx50], Y_u[idx50], 'kx', linewidth = 2, label = 'Data')
   lower = U_pred[50,:] - 2.0*np.sqrt(Sigma_pred[50,:])
   upper = U_pred[50,:] + 2.0*np.sqrt(Sigma_pred[50,:])
   plt.fill_between(x.flatten(), lower.flatten(), upper.flatten(), 
@@ -175,6 +188,7 @@ def plot_inf_cont_results(X_star, U_pred, Sigma_pred, X_u_train, u_train, Exact_
   ax = plt.subplot(gs1[0, 2])
   ax.plot(x,Exact[75,:], 'b-', linewidth = 2, label = 'Exact')       
   ax.plot(x,U_pred[75,:], 'r--', linewidth = 2, label = 'Prediction')
+  ax.plot(X_u[idx75], Y_u[idx75], 'kx', linewidth = 2, label = 'Data')
   lower = U_pred[75,:] - 2.0*np.sqrt(Sigma_pred[75,:])
   upper = U_pred[75,:] + 2.0*np.sqrt(Sigma_pred[75,:])
   plt.fill_between(x.flatten(), lower.flatten(), upper.flatten(), 
