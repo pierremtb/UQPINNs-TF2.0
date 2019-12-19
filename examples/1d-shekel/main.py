@@ -8,8 +8,10 @@ import matplotlib.pyplot as plt
 
 sys.path.append(os.path.join("..", ".."))
 from podnn.podnnmodel import PodnnModel
+from podnn.advneuralnetwork import AdvNeuralNetwork
 from podnn.metrics import re_mean_std
 from podnn.mesh import create_linear_mesh
+from podnn.logger import Logger
 
 from genhifi import u, generate_test_dataset
 from plot import plot_results
@@ -54,15 +56,16 @@ def main(hp, gen_test=False, use_cached_dataset=False,
                              hp["lr"], hp["lam"], hp["bet"], hp["k1"], hp["k2"], hp["norm"])
     regnn.summary()
 
-    logger = Logger(epochs, freq)
+    logger = Logger(hp["epochs"], hp["log_frequency"])
     # val_size = train_val_test[1] / (train_val_test[0] + train_val_test[1])
     # from sklearn.model_selection import train_test_split
     # X_v_train_t, X_v_train_v, v_train_t, v_train_v = train_test_split(X_v_train, v_train, val_size)
     def get_val_err():
-        return {}.
+        return {}
     logger.set_val_err_fn(get_val_err)
     # Training
-    regnn.fit(X_v_train, v_train, epochs, logger)
+    exit(0)
+    regnn.fit(X_u_train, u_train, hp["epochs"], logger)
 
     # Predict and restruct
     v_pred, v_pred_sig = model.predict_v(X_v_test)
