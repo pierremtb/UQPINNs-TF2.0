@@ -5,11 +5,12 @@ import os
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
 
 sys.path.append(os.path.join("..", ".."))
 from podnn.podnnmodel import PodnnModel
 from podnn.advneuralnetwork import AdvNeuralNetwork
-from podnn.metrics import re_mean_std
+from podnn.metrics import re_mean_std, re
 from podnn.mesh import create_linear_mesh
 from podnn.logger import Logger
 
@@ -57,54 +58,53 @@ def main(hp, gen_test=False, use_cached_dataset=False,
     regnn.summary()
 
     logger = Logger(hp["epochs"], hp["log_frequency"])
-    # val_size = train_val_test[1] / (train_val_test[0] + train_val_test[1])
-    # from sklearn.model_selection import train_test_split
-    # X_v_train_t, X_v_train_v, v_train_t, v_train_v = train_test_split(X_v_train, v_train, val_size)
+    train_val_test = hp["train_val_test"]
+    val_size = train_val_test[1] / (train_val_test[0] + train_val_test[1])
+    print(X_U_train.shape, U_train.shape)
+    X_U_train, X_U_val, U_train, U_val = train_test_split(X_U_train, U_train, test_size=val_size)
     def get_val_err():
-        return {}
+        U_val_pred, _ = regnn.predict(X_U_val)
+        return {
+            "RE": re(U_val_pred[:, 0], U_val[:, 0])
+        }
     logger.set_val_err_fn(get_val_err)
 
-    print(X_U_train, X_U_train.shape)
-    print(U_train, U_train.shape)
-    print(layers)
     # Training
     regnn.fit(X_U_train, U_train, hp["epochs"], logger)
 
-
     # Predict and restruct
-    v_pred, v_pred_sig = model.predict_v(X_v_test)
-    U_pred = model.V.dot(v_pred.T)
-    Sigma_pred = model.V.dot(v_pred_sig.T)
-    print(U_pred.shape, Sigma_pred.shape)
+    U_pred, U_pred_sig = model.predict(X_U_test)
 
     x = np.linspace(hp["x_min"], hp["x_max"], hp["n_x"])
     plt.plot(x, U_pred[:, 0], "b-")
     plt.plot(x, U_test[:, 0], "r--")
-    lower = U_pred[:, 0] - 2.0*Sigma_pred[:, 0]
-    upper = U_pred[:, 0] + 2.0*Sigma_pred[:, 0]
+    lower = U_pred[:, 0] - 2.0*U_pred_sig[:, 0]
+    upper = U_pred[:, 0] + 2.0*U_pred_sig[:, 0]
     plt.fill_between(x, lower, upper, 
                         facecolor='orange', alpha=0.5, label="Two std band")
-    plt.show()
+    plt.savefig("test.pdf")
 
-    U_pred = model.restruct(U_pred)
-    U_test = model.restruct(U_test)
+    return
 
-    # Compute relative error
-    error_test_mean, error_test_std = re_mean_std(U_test, U_pred)
-    print(f"Test relative error: mean {error_test_mean:4f}, std {error_test_std:4f}")
+    # U_pred = model.restruct(U_pred)
+    # U_test = model.restruct(U_test)
 
-    # Sample the new model to generate a HiFi prediction
-    print("Sampling {n_s_hifi} parameters")
-    X_v_test_hifi = model.generate_hifi_inputs(hp["n_s_hifi"],
-                                               hp["mu_min"], hp["mu_max"])
-    print("Predicting the {n_s_hifi} corresponding solutions")
-    U_pred_hifi_mean, U_pred_hifi_std = model.predict_heavy(X_v_test_hifi)
-    U_pred_hifi_mean = model.restruct(U_pred_hifi_mean[0], no_s=True), model.restruct(U_pred_hifi_mean[1], no_s=True)
-    U_pred_hifi_std = model.restruct(U_pred_hifi_std[0], no_s=True), model.restruct(U_pred_hifi_std[1], no_s=True)
+    # # Compute relative error
+    # error_test_mean, error_test_std = re_mean_std(U_test, U_pred)
+    # print(f"Test relative error: mean {error_test_mean:4f}, std {error_test_std:4f}")
 
-    # Plot against test and save
-    return plot_results(U_pred, U_pred_hifi_mean, U_pred_hifi_std,
-                        train_res, hp, no_plot)
+    # # Sample the new model to generate a HiFi prediction
+    # print("Sampling {n_s_hifi} parameters")
+    # X_v_test_hifi = model.generate_hifi_inputs(hp["n_s_hifi"],
+    #                                            hp["mu_min"], hp["mu_max"])
+    # print("Predicting the {n_s_hifi} corresponding solutions")
+    # U_pred_hifi_mean, U_pred_hifi_std = model.predict_heavy(X_v_test_hifi)
+    # U_pred_hifi_mean = model.restruct(U_pred_hifi_mean[0], no_s=True), model.restruct(U_pred_hifi_mean[1], no_s=True)
+    # U_pred_hifi_std = model.restruct(U_pred_hifi_std[0], no_s=True), model.restruct(U_pred_hifi_std[1], no_s=True)
+
+    # # Plot against test and save
+    # return plot_results(U_pred, U_pred_hifi_mean, U_pred_hifi_std,
+    #                     train_res, hp, no_plot)
 
 
 if __name__ == "__main__":
