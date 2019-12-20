@@ -106,37 +106,6 @@ class PodnnModel:
         X_v_val, v_val = X_v[n_st_train:, :], v[n_st_train:, :]
         return X_v_train, X_v_val, v_train, v_val
 
-    def create_snapshots(self, n_d, n_v, u, mu_lhs,
-                         t_min=0, t_max=0, u_noise=0., x_noise=0.):
-        """Create a generated snapshots matrix and inputs for benchmarks."""
-        n_s = mu_lhs.shape[0]
-
-        # Getting the space
-        x = self.x_mesh[:, 1:].T
-        n_xyz = x.shape[0]
-
-        # Numba-ifying the function
-        u = nb.njit(u)
-
-        n_stx = n_s * n_xyz
-        if self.has_t:
-            n_stx *= self.n_t
-
-
-        # Declaring the common output arrays
-        X_v = np.zeros((n_stx, n_d))
-        U = np.zeros((n_stx, n_v))
-
-        if self.has_t:
-            # TODO. implement t
-            n_h = 0
-            U_struct = np.zeros((n_h, self.n_t, n_s))
-            return loop_u_t(u, self.n_t, self.n_v, n_xyz, n_h,
-                            X_v, U, U_struct, x, mu_lhs, t_min, t_max)
-
-        U_no_noise = np.zeros((n_stx, n_v))
-        return loop_u(u, X_v, U, U_no_noise, x, mu_lhs, u_noise, x_noise)
-
     def convert_dataset(self, u_mesh, X_v, train_val_test, eps, eps_init=None,
                         use_cache=False):
         """Convert spatial mesh/solution to usable inputs/snapshot matrix."""
@@ -178,6 +147,37 @@ class PodnnModel:
 
         return X_v_train, v_train, X_v_test, v_test, U_test
 
+    def create_snapshots(self, n_d, n_v, u, mu_lhs,
+                         t_min=0, t_max=0, u_noise=0., x_noise=0.):
+        """Create a generated snapshots matrix and inputs for benchmarks."""
+        n_s = mu_lhs.shape[0]
+
+        # Getting the space
+        x = self.x_mesh[:, 1:]
+        n_xyz = x.shape[0]
+
+        # Numba-ifying the function
+        u = nb.njit(u)
+
+        n_stx = n_s * n_xyz
+        if self.has_t:
+            n_stx *= self.n_t
+
+
+        # Declaring the common output arrays
+        X_v = np.zeros((n_stx, n_d))
+        U = np.zeros((n_stx, n_v))
+
+        if self.has_t:
+            # TODO. implement t
+            n_h = 0
+            U_struct = np.zeros((n_h, self.n_t, n_s))
+            return loop_u_t(u, self.n_t, self.n_v, n_xyz, n_h,
+                            X_v, U, U_struct, x, mu_lhs, t_min, t_max)
+
+        U_no_noise = np.zeros((n_stx, n_v))
+        return loop_u(u, X_v, U, U_no_noise, x, mu_lhs, u_noise, x_noise)
+
     def generate_dataset(self, u, mu_min, mu_max, n_s,
                          train_val_test, eps=0., eps_init=None, n_L=0,
                          t_min=0, t_max=0, u_noise=0., x_noise=0., v_noise=0.,
@@ -198,7 +198,6 @@ class PodnnModel:
             n_st *= self.n_t
 
         # Number of input in time (1) + number of params
-        print(x.shape)
         n_d = mu_min.shape[0] + x.shape[1]
         if self.has_t:
             n_d += 1
@@ -218,10 +217,10 @@ class PodnnModel:
         # Creating the snapshots
         print(f"Generating {n_st} corresponding snapshots")
         X_U_train, U_train, U_no_noise = \
-            self.create_snapshots(n_d, n_h, u, mu_lhs_train,
+            self.create_snapshots(n_d, self.n_v, u, mu_lhs_train,
                                   t_min, t_max, u_noise, x_noise)
         X_U_test, U_test, _ = \
-            self.create_snapshots(n_d, n_h, u, mu_lhs_test,
+            self.create_snapshots(n_d, self.n_v, u, mu_lhs_test,
                                   t_min, t_max)
 
 

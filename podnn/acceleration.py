@@ -45,7 +45,7 @@ def loop_u(u, X_U, U, U_no_noise, x, mu_lhs, u_noise=0., x_noise=0.):
     # pylint: disable=not-an-iterable
 
     n_xyz = x.shape[0]
-    n_p = mu_lhs.shape[0]
+    n_p = mu_lhs.shape[1]
 
     for i in prange(n_p):
         mu_lhs_i = mu_lhs[i]
