@@ -40,30 +40,38 @@ def loop_vdot_t(n_s, n_t, U_tot, U_tot_sq, V, v_pred_hifi):
 
 
 @jit(nopython=True, parallel=True)
-def loop_u(u, n_s, n_h, X_v, U, X, mu_lhs, u_noise=0., x_noise=0.):
+def loop_u(u, X_U, U, U_no_noise, x, mu_lhs, u_noise=0., x_noise=0.):
     """Return the inputs/snapshots matrices from parallel computation."""
     # pylint: disable=not-an-iterable
-    for i in prange(n_s):
-        X_v[i, :] = mu_lhs[i]
-        U_i = u(X, 0, mu_lhs[i, :]).reshape((n_h,))
-        if u_noise > 0.:
-            U_i += u_noise*np.std(U_i)*np.random.randn(U_i.shape[0])
-        U[:, i] = U_i
+
+    n_xyz = x.shape[0]
+    n_p = mu_lhs.shape[0]
+
+    for i in prange(n_p):
+        mu_lhs_i = mu_lhs[i]
         if x_noise > 0.:
-            X_v[i, :] += x_noise*np.std(X_v[i, :])*np.random.randn(X_v[i, :].shape[0])
-    U_struct = U
-    return X_v, U, U_struct
+            mu_lhs_i += np.random.normal(0., x_noise*np.std(mu_lhs_i), mu_lhs_i.shape[0])
+        for j in prange(n_xyz):
+            idx = i * n_p + j
+            U_ij_no_noise = u(x[j], 0, mu_lhs[i])
+            X_U[idx, :] = np.hstack((mu_lhs_i, x[j]))
+            U_ij = u(x[j], 0, mu_lhs_i)
+            U[idx, :] = U_ij
+            U_no_noise[idx, :] = U_ij_no_noise
+        # if u_noise > 0.:
+        #     U[i] += u_noise*np.std(U[i])*np.random.randn(U[i].shape[0], U[i].shape[1])
+    return X_U, U, U_no_noise
 
 
 @jit(nopython=True, parallel=True)
-def loop_u_t(u, n_s, n_t, n_v, n_xyz, n_h,
-             X_v, U, U_struct, X, mu_lhs, t_min, t_max):
+def loop_u_t(u, n_t, n_v, n_xyz, n_h,
+             X_v, U, U_struct, X, mu_lhs, t_min, t_max, u_noise=0.):
     """Return the inputs/snapshots matrices from parallel computation (w/ t)."""
     # Creating the time steps
     t = np.linspace(t_min, t_max, n_t)
     tT = t.reshape((n_t, 1))
     # pylint: disable=not-an-iterable
-    for i in prange(n_s):
+    for i in prange(mu_lhs.shape[0]):
         # Getting the snapshot times indices
         s = n_t * i
         e = n_t * (i + 1)
@@ -74,7 +82,10 @@ def loop_u_t(u, n_s, n_t, n_v, n_xyz, n_h,
         # Calling the analytical solution function
         Ui = np.zeros((n_v, n_xyz, n_t))
         for j in range(n_t):
-            Ui[:, :, j] = u(X, t[j], mu_lhs[i])
+            Uij = u(X, t[j], mu_lhs[i])
+            if u_noise > 0.:
+                Uij += u_noise*np.std(Uij)*np.random.randn(Uij.shape[0], Uij.shape[1])
+            Ui[:, :, j] = Uij
 
         U[:, s:e] = Ui.reshape((n_h, n_t))
         U_struct[:, :, i] = U[:, s:e]

@@ -28,7 +28,8 @@ def u(X, _, mu):
         i_sum = (x - gam[i])**2
         u_sum += 1 / (bet[i] + i_sum)
 
-    return u_sum.reshape((1, u_sum.shape[0]))
+    return u_sum.reshape((1,))
+    # return u_sum.reshape((1, u_sum.shape[0]))
 
 
 class ShekelTestGenerator(TestGenerator):

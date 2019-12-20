@@ -35,22 +35,23 @@ def main(hp, gen_test=False, use_cached_dataset=False,
     model = PodnnModel("cache", hp["n_v"], x_mesh, hp["n_t"])
 
     # Generate the dataset from the mesh and params
-    X_u_train, u_train, \
-        X_u_test, u_test = model.generate_dataset(u, hp["mu_min"], hp["mu_max"],
-                                                  hp["n_s"],
-                                                  hp["train_val_test"],
-                                                  hp["eps"],
-                                                  u_noise=0.0,
-                                                  use_cache=use_cached_dataset)
+    X_U_train, U_train, X_U_test, U_test = \
+        model.generate_dataset(u, hp["mu_min"], hp["mu_max"],
+                               hp["n_s"],
+                               hp["train_val_test"],
+                               hp["eps"],
+                               u_noise=0.0,
+                               use_cache=use_cached_dataset)
 
     # Train
-    X_dim = 1 + 1 + len(hp["mu_min"])
+    X_dim = model.n_d
     Y_dim = hp["n_v"]
     Z_dim = X_dim 
     layers_p = [X_dim+Z_dim, *hp["h_layers"], Y_dim]
     layers_q = [X_dim+Y_dim, *hp["h_layers"], Z_dim]
     layers_t = [X_dim+Y_dim, *hp["h_layers_t"], 1]
     layers = (layers_p, layers_q, layers_t)
+
 
     regnn = AdvNeuralNetwork(layers, (X_dim, Y_dim, Z_dim),
                              hp["lr"], hp["lam"], hp["bet"], hp["k1"], hp["k2"], hp["norm"])
@@ -63,9 +64,13 @@ def main(hp, gen_test=False, use_cached_dataset=False,
     def get_val_err():
         return {}
     logger.set_val_err_fn(get_val_err)
+
+    print(X_U_train, X_U_train.shape)
+    print(U_train, U_train.shape)
+    print(layers)
     # Training
-    exit(0)
-    regnn.fit(X_u_train, u_train, hp["epochs"], logger)
+    regnn.fit(X_U_train, U_train, hp["epochs"], logger)
+
 
     # Predict and restruct
     v_pred, v_pred_sig = model.predict_v(X_v_test)
