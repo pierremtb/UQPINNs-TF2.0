@@ -10,6 +10,7 @@ from sklearn.model_selection import train_test_split
 sys.path.append(os.path.join("..", ".."))
 from podnn.podnnmodel import PodnnModel
 from podnn.advneuralnetwork import AdvNeuralNetwork
+from podnn.neuralnetwork import NeuralNetwork
 from podnn.metrics import re_mean_std, re
 from podnn.mesh import create_linear_mesh
 from podnn.logger import Logger
@@ -52,9 +53,11 @@ def main(hp, gen_test=False, use_cached_dataset=False,
     layers_t = [X_dim+Y_dim, *hp["h_layers_t"], 1]
     layers = (layers_p, layers_q, layers_t)
 
+    layers = [model.n_d, 50, 50, 50, hp["n_v"]]
 
-    regnn = AdvNeuralNetwork(layers, (X_dim, Y_dim, Z_dim),
-                             hp["lr"], hp["lam"], hp["bet"], hp["k1"], hp["k2"], hp["norm"])
+    regnn = NeuralNetwork(layers, hp["lr"], hp["bet"])
+    # regnn = AdvNeuralNetwork(layers, (X_dim, Y_dim, Z_dim),
+    #                          hp["lr"], hp["lam"], hp["bet"], hp["k1"], hp["k2"], hp["norm"])
     regnn.summary()
 
     logger = Logger(hp["epochs"], hp["log_frequency"])
@@ -63,7 +66,8 @@ def main(hp, gen_test=False, use_cached_dataset=False,
     print(X_U_train.shape, U_train.shape)
     X_U_train, X_U_val, U_train, U_val = train_test_split(X_U_train, U_train, test_size=val_size)
     def get_val_err():
-        U_val_pred, _ = regnn.predict(X_U_val)
+        # U_val_pred, _ = regnn.predict(X_U_val)
+        U_val_pred = regnn.predict(X_U_val)
         return {
             "RE": re(U_val_pred[:, 0], U_val[:, 0])
         }
