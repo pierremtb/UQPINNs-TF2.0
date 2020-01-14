@@ -41,11 +41,11 @@ layers_t = [X_dim+Y_dim, *h_layers_t, 1]
 layers = (layers_p, layers_q, layers_t)
 
 model = AdvNeuralNetwork(layers, (X_dim, Y_dim, Z_dim),
-                            0.0001, 1.5, 0., 1, 1, NORM_MEANSTD)
+                            0.0001, 1.0, 1e0, 1, 1, NORM_MEANSTD)
                             
 model.summary()
 
-epochs = 50000
+epochs = 30000
 logger = Logger(epochs, 1000)
 
 def get_val_err():
