@@ -56,9 +56,9 @@ def main(hp, gen_test=False, use_cached_dataset=False,
     # layers = [model.n_d, 50, 50, 50, hp["n_v"]]
 
     # regnn = NeuralNetwork(layers, hp["lr"], hp["bet"])
-    regnn = AdvNeuralNetwork(layers, (X_dim, Y_dim, Z_dim),
+    model = AdvNeuralNetwork(layers, (X_dim, Y_dim, Z_dim),
                              hp["lr"], hp["lam"], hp["bet"], hp["k1"], hp["k2"], hp["norm"])
-    regnn.summary()
+    model.summary()
 
     logger = Logger(hp["epochs"], hp["log_frequency"])
     train_val_test = hp["train_val_test"]
@@ -67,25 +67,28 @@ def main(hp, gen_test=False, use_cached_dataset=False,
     X_U_train, X_U_val, U_train, U_val = train_test_split(X_U_train, U_train, test_size=val_size)
     def get_val_err():
         # U_val_pred, _ = regnn.predict(X_U_val)
-        U_val_pred = regnn.predict_sample(X_U_val)
+        U_val_pred = model.predict_sample(X_U_val)
         return {
             "RE": re(U_val_pred[:, 0], U_val[:, 0])
         }
     logger.set_val_err_fn(get_val_err)
 
     # Training
-    regnn.fit(X_U_train, U_train, hp["epochs"], logger)
+    model.fit(X_U_train, U_train, hp["epochs"], logger)
 
     # Predict and restruct
     U_pred, U_pred_sig = model.predict(X_U_test)
+    print(X_U_test)
+    print(X_U_test.shape)
+    print(U_pred.shape)
 
     x = np.linspace(hp["x_min"], hp["x_max"], hp["n_x"])
     plt.plot(x, U_pred[:, 0], "b-")
     plt.plot(x, U_test[:, 0], "r--")
-    lower = U_pred[:, 0] - 2.0*U_pred_sig[:, 0]
-    upper = U_pred[:, 0] + 2.0*U_pred_sig[:, 0]
-    plt.fill_between(x, lower, upper, 
-                        facecolor='orange', alpha=0.5, label="Two std band")
+    # lower = U_pred[:, 0] - 2.0*U_pred_sig[:, 0]
+    # upper = U_pred[:, 0] + 2.0*U_pred_sig[:, 0]
+    # plt.fill_between(x, lower, upper, 
+    #                     facecolor='orange', alpha=0.5, label="Two std band")
     plt.savefig("test.pdf")
 
     return
