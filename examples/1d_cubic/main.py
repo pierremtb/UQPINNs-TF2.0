@@ -11,6 +11,7 @@ from podnn.metrics import re_mean_std, re
 from podnn.mesh import create_linear_mesh
 from podnn.logger import Logger
 from podnn.advneuralnetwork import NORM_MEANSTD, NORM_NONE
+from podnn.plotting import figsize
 
 
 x_star = np.linspace(-6, 6, 100).reshape(100, 1)
@@ -76,14 +77,27 @@ for i in range(0, M):
 u_pred = u_pred_samples.mean(-1)
 u_pred_var = (u_pred_var_samples + u_pred_samples ** 2).mean(-1) - u_pred ** 2
 
-plt.plot(x_star, u_star)
-plt.scatter(x_train, u_train)
-plt.plot(x_star, u_pred, "r--")
+# plt.plot(x_star, u_star)
+# plt.scatter(x_train, u_train)
+# plt.plot(x_star, u_pred, "r--")
+# lower = u_pred - 3 * np.sqrt(u_pred_var)
+# upper = u_pred + 3 * np.sqrt(u_pred_var)
+# plt.fill_between(x_star[:, 0], lower[:, 0], upper[:, 0], 
+#                     facecolor='orange', alpha=0.5, label=r"$2\sigma_{T,hf}(x)$")
+# plt.show()
+fig = plt.figure(figsize=figsize(1, 1, scale=2.5))
 lower = u_pred - 3 * np.sqrt(u_pred_var)
 upper = u_pred + 3 * np.sqrt(u_pred_var)
 plt.fill_between(x_star[:, 0], lower[:, 0], upper[:, 0], 
-                    facecolor='orange', alpha=0.5, label=r"$2\sigma_{T,hf}(x)$")
-plt.show()
+                    facecolor='C0', alpha=0.3, label=r"$3\sigma_{T}(x)$")
+# plt.plot(x_star, u_pred_samples[:, :, 0].numpy().T, 'C0', linewidth=.5)
+plt.scatter(x_train, u_train, c="r", label=r"$u_T(x)$")
+plt.plot(x_star, u_star, "r--", label=r"$u_*(x)$")
+plt.plot(x_star, u_pred, label=r"$\hat{u}_*(x)$")
+plt.legend()
+plt.xlabel("$x$")
+# plt.show()
+plt.savefig("results/uqnn.pdf")
 
 # U_pred, U_pred_sig = model.predict(X_U_test)
 # print(X_U_test)
