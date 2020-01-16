@@ -34,42 +34,53 @@ X_dim = 1
 Y_dim = 1
 Z_dim = 1 
 h_layers = [50, 50, 50, 50]
-h_layers_t = [50, 50, 50]
+h_layers_t = [50, 50]
 layers_p = [X_dim+Z_dim, *h_layers, Y_dim]
 layers_q = [X_dim+Y_dim, *h_layers, Z_dim]
 layers_t = [X_dim+Y_dim, *h_layers_t, 1]
 layers = (layers_p, layers_q, layers_t)
 
-model = AdvNeuralNetwork(layers, (X_dim, Y_dim, Z_dim),
-                            0.0001, 1.0, 1e0, 1, 1, NORM_MEANSTD)
-                            
-model.summary()
+def gen_and_train():
+    model = AdvNeuralNetwork(layers, (X_dim, Y_dim, Z_dim),
+                                0.001, 1.5, 0.1, 1, 5, NORM_MEANSTD)
+                                
+    model.summary()
 
-epochs = 30000
-logger = Logger(epochs, 1000)
+    epochs = 2000
+    logger = Logger(epochs, 1000)
 
-def get_val_err():
-    u_pred = model.predict_sample(x_star)
-    return {
-        "RE": re(u_pred, u_star),
-    }
-    # U_val_pred, _ = regnn.predict(X_U_val)
-    # U_val_pred = model.predict_sample(X_U_val)
-    # return {
-    #     "RE": re(U_val_pred[:, 0], U_val[:, 0])
-    # }
-logger.set_val_err_fn(get_val_err)
+    def get_val_err():
+        u_pred = model.predict_sample(x_star)
+        return {
+            "RE": re(u_pred, u_star),
+        }
+        # U_val_pred, _ = regnn.predict(X_U_val)
+        # U_val_pred = model.predict_sample(X_U_val)
+        # return {
+        #     "RE": re(U_val_pred[:, 0], U_val[:, 0])
+        # }
+    logger.set_val_err_fn(get_val_err)
 
-# Training
-model.fit(x_train, u_train, epochs, logger)
+    # Training
+    model.fit(x_train, u_train, epochs, logger)
 
-# Predict and restruct
-u_pred, u_pred_sig = model.predict(x_star)
+    # Predict and restruct
+    u_pred, u_pred_sig = model.predict(x_star)
+    return u_pred, u_pred_sig
+
+M = 1
+u_pred_samples = np.zeros((100, 1, M)) 
+u_pred_var_samples = np.zeros((100, 1, M))
+for i in range(0, M):
+    u_pred_samples[:, :, i], u_pred_var_samples[:, :, i] = gen_and_train()
+u_pred = u_pred_samples.mean(-1)
+u_pred_var = (u_pred_var_samples + u_pred_samples ** 2).mean(-1) - u_pred ** 2
+
 plt.plot(x_star, u_star)
 plt.scatter(x_train, u_train)
 plt.plot(x_star, u_pred, "r--")
-lower = u_pred - 2 * u_pred_sig
-upper = u_pred + 2 * u_pred_sig
+lower = u_pred - 3 * np.sqrt(u_pred_var)
+upper = u_pred + 3 * np.sqrt(u_pred_var)
 plt.fill_between(x_star[:, 0], lower[:, 0], upper[:, 0], 
                     facecolor='orange', alpha=0.5, label=r"$2\sigma_{T,hf}(x)$")
 plt.show()
