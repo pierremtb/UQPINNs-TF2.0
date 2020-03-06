@@ -51,7 +51,7 @@ class AdvNeuralNetwork(object):
         model.add(tf.keras.layers.InputLayer(input_shape=(layers[0],)))
         for width in layers[1:-1]:
             model.add(tf.keras.layers.Dense(
-                width, activation=tf.nn.tanh,
+                width, activation="relu",
                 kernel_initializer="glorot_normal"))
         model.add(tf.keras.layers.Dense(
             layers[-1], activation=None,
@@ -225,8 +225,6 @@ class AdvNeuralNetwork(object):
         # Creating the tensors
         X_u = self.normalize(X_u)
         u = self.tensor(u)
-        print(X_u)
-        print(u)
         X_f = X_u
 
         self.batch_size_u = X_u.shape[0]
